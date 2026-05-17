@@ -150,26 +150,11 @@
 
 .chat-virtuoso {
     height: 100%;
-    scrollbar-width: thin;
-    scrollbar-color: #c1c1c1 #f1f1f1;
+    scrollbar-width: none;
 }
 
 .chat-virtuoso::-webkit-scrollbar {
-    width: 6px;
-}
-
-.chat-virtuoso::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 3px;
-}
-
-.chat-virtuoso::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 3px;
-}
-
-.chat-virtuoso::-webkit-scrollbar-thumb:hover {
-    background: #a1a1a1;
+    display: none;
 }
 
 .message-item {
