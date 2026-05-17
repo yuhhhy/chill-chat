@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const API_KEY = process.env.XUNFEI_API_KEY;
+const API_KEY = process.env.DEEPSEEK_API_KEY;
 const PORT = process.env.PORT || 3001;
 
 const server = http.createServer((req, res) => {
@@ -51,7 +51,7 @@ const server = http.createServer((req, res) => {
 
 function handleStreamRequest(messages, res) {
   const requestBody = {
-    model: 'xop3qwen1b7',
+    model: 'deepseek-v4-flash',
     messages: messages,
     max_tokens: 4000,
     temperature: 0.7,
@@ -59,7 +59,7 @@ function handleStreamRequest(messages, res) {
   };
   
   const options = {
-    hostname: 'maas-api.cn-huabei-1.xf-yun.com',
+    hostname: 'api.deepseek.com',
     port: 443,
     path: '/v1/chat/completions',
     method: 'POST',

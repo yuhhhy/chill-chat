@@ -1,4 +1,4 @@
-# yuan-Chat
+# chill-Chat
 
 一个基于 React + Node.js 构建的现代化 AI 对话应用，采用流式输出技术，提供流畅的实时对话体验。
 
@@ -63,8 +63,8 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/gulugulu33/yuan-Chat.git
-cd yuan-Chat
+git clone https://github.com/yuhhhy/chill-Chat.git
+cd chill-Chat
 ```
 
 ### 2. 安装依赖
@@ -114,7 +114,7 @@ npm run build
 ## 项目结构
 
 ```
-yuan-Chat/
+chill-Chat/
 ├── public/                    # 静态资源
 ├── src/
 │   ├── assets/               # 图片和图标等资源
