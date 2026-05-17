@@ -88,7 +88,7 @@ export const useSpeechRecognition = ({ onTranscript }) => {
 
     const recognition = new SpeechRecognition();
     recognition.lang = "zh-CN";
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
