@@ -8,7 +8,7 @@ import MarkdownRenderer from "../MarkdownRenderer/MarkdownRenderer";
 const MessageRow = ({ message }) => (
   <div className={`message-item ${message.role === "assistant" ? "ai-message" : "user-message"}`}>
     <img
-      src={message.role === "assistant" ? assets.gemini_icon : assets.user_icon}
+      src={message.role === "assistant" ? assets.deepseek_icon : assets.user_icon}
       alt=""
       className="message-avatar"
     />
@@ -123,7 +123,7 @@ const Main = () => {
               value={voiceInputStatus === "recording" ? voiceTranscript || input : input}
               type="text"
               onKeyDown={handleKeyPress}
-              placeholder="在这里输入提示"
+              placeholder="在这里输入"
             />
             <div className="search-actions">
               <img src={assets.gallery_icon} alt="" />
@@ -167,7 +167,6 @@ const Main = () => {
               <p>{voiceError || (voiceInputStatus === "recording" ? "请开始说话，点击麦克风结束录音。" : "正在处理语音内容…")}</p>
             </div>
           )}
-          <p className="bottom-info">chillAI 可能会显示不准确的信息，请仔细检查其回复。</p>
         </div>
       </div>
     </div>
