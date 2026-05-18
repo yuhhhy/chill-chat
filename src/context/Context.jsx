@@ -8,8 +8,11 @@ export const Context = createContext();
 
 const MODEL_PROVIDER_STORAGE_KEY = "chill-chat:model-provider";
 const THEME_STORAGE_KEY = "chill-chat:theme";
+const CONTEXT_TURN_COUNT_STORAGE_KEY = "chill-chat:context-turn-count";
 const DEFAULT_MODEL_PROVIDER = "deepseek";
 const DEFAULT_THEME = "light";
+const DEFAULT_CONTEXT_TURN_COUNT = 5;
+const CONTEXT_TURN_COUNT_OPTIONS = new Set([-1, 0, 1, 2, 5, 10, 20]);
 
 const ContextProvider = ({ children }) => {
   const [input, setInput] = useState("");
@@ -21,6 +24,12 @@ const ContextProvider = ({ children }) => {
   const [theme, setThemeState] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_THEME;
     return window.localStorage.getItem(THEME_STORAGE_KEY) || DEFAULT_THEME;
+  });
+  const [contextTurnCount, setContextTurnCountState] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_CONTEXT_TURN_COUNT;
+    const storedValue = window.localStorage.getItem(CONTEXT_TURN_COUNT_STORAGE_KEY);
+    const stored = storedValue === null ? NaN : Number(storedValue);
+    return CONTEXT_TURN_COUNT_OPTIONS.has(stored) ? stored : DEFAULT_CONTEXT_TURN_COUNT;
   });
   const [modelNames, setModelNames] = useState({});
   const virtuosoRef = useRef(null);
@@ -46,6 +55,7 @@ const ContextProvider = ({ children }) => {
 
   const { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate } = useChat({
     currentSessionId,
+    contextTurnCount,
     modelProvider,
     onSessionUpdated: updateSession
   });
@@ -83,6 +93,13 @@ const ContextProvider = ({ children }) => {
     setThemeState(nextTheme);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+    }
+  }, []);
+
+  const setContextTurnCount = useCallback((turnCount) => {
+    setContextTurnCountState(turnCount);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(CONTEXT_TURN_COUNT_STORAGE_KEY, String(turnCount));
     }
   }, []);
 
@@ -125,6 +142,7 @@ const ContextProvider = ({ children }) => {
     currentSessionId,
     deleteSession,
     fileInputRef,
+    contextTurnCount,
     input,
     isAtBottom,
     isGenerating,
@@ -141,6 +159,7 @@ const ContextProvider = ({ children }) => {
     scrollToBottom,
     sessions,
     setInput,
+    setContextTurnCount,
     setIsAtBottom,
     setModelProvider,
     setTheme,
@@ -158,6 +177,7 @@ const ContextProvider = ({ children }) => {
     currentSessionId,
     deleteSession,
     fileInputRef,
+    contextTurnCount,
     input,
     isAtBottom,
     isGenerating,
@@ -173,6 +193,7 @@ const ContextProvider = ({ children }) => {
     removeFile,
     scrollToBottom,
     sessions,
+    setContextTurnCount,
     setModelProvider,
     setTheme,
     theme,

@@ -47,24 +47,26 @@ const SideBar = ({ onOpenSettings }) => {
                 </div>
                 <div className="recent">
                     <p className='recent-title label'>Recent</p>
-                    {sessions.map((session) => (
-                        <div
-                            key={session.id}
-                            onClick={() => loadSession(session.id)}
-                            className={`recent-entry ${session.id === currentSessionId ? 'active' : ''}`}
-                        >
-                            <p className="label session-title">{session.title}</p>
-                            <img
-                                src={assets.trash}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteSession(session.id);
-                                }}
-                                alt=""
-                                className="delete-icon"
-                            />
-                        </div>
-                    ))}
+                    <div className="recent-list">
+                        {sessions.map((session) => (
+                            <div
+                                key={session.id}
+                                onClick={() => loadSession(session.id)}
+                                className={`recent-entry ${session.id === currentSessionId ? 'active' : ''}`}
+                            >
+                                <p className="label session-title">{session.title}</p>
+                                <img
+                                    src={assets.trash}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteSession(session.id);
+                                    }}
+                                    alt=""
+                                    className="delete-icon"
+                                />
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
             <div className="bottom">

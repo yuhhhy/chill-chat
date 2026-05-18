@@ -1,5 +1,5 @@
 .sidebar {
-    min-height: 100vh;
+    height: 100vh;
     display: inline-flex;
     flex-direction: column;
     justify-content: space-between;
@@ -49,10 +49,34 @@ html[data-theme="dark"] .sidebar .new-chat:hover img {
     cursor: pointer;
 }
 
+.sidebar .top {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+}
+
 .sidebar .recent {
     display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 4px;
+    min-height: 0;
+}
+
+.sidebar .recent-list {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 0;
+    overflow: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.sidebar .recent-list::-webkit-scrollbar {
+    display: none;
 }
 
 .sidebar .recent-title {

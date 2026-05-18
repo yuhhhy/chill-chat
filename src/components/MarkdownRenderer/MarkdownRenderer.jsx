@@ -11,12 +11,11 @@ const MarkdownRenderer = ({ content }) => {
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[rehypeRaw, rehypeHighlight]}
       components={{
-        code({ node, className, children, ...props }) {
+        code({ className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || '');
-          const language = match ? match[1] : '';
-          const isInline = node?.tagName === 'code' && node?.position?.start.line === node?.position?.end.line && !match;
+          const isBlockCode = Boolean(className) || String(children).includes('\n');
 
-          if (isInline) {
+          if (!isBlockCode) {
             return (
               <code className={className} {...props}>
                 {children}
@@ -25,13 +24,17 @@ const MarkdownRenderer = ({ content }) => {
           }
 
           return (
-            <code className={`hljs language-${language}`} {...props}>
+            <code className={className} {...props}>
               {children}
             </code>
           );
         },
-        pre({ children }) {
-          return <div className="code-block">{children}</div>;
+        pre({ children, ...props }) {
+          return (
+            <div className="code-block">
+              <pre {...props}>{children}</pre>
+            </div>
+          );
         }
       }}
     >

@@ -60,14 +60,20 @@
     position: relative;
     cursor: pointer;
 }
-.main .card img{
+.main .card .card-icon{
     width: 35px;
-    padding: 5px;
+    height: 35px;
+    padding: 6px;
     position: absolute;
     background-color: var(--surface-elevated);
+    color: var(--text-muted);
     border-radius: 20px;
     bottom: 10px;
     right: 10px;
+}
+html[data-theme="dark"] .main .card .card-icon{
+    background-color: var(--surface-muted);
+    color: var(--text-secondary);
 }
 .main .card p{
     color: var(--text-secondary);
@@ -86,6 +92,37 @@
     max-width: calc(900px + (var(--chat-content-padding) * 2));
     margin: 0 auto;
     padding: 0 var(--chat-content-padding) 12px;
+}
+
+.scroll-to-bottom-button {
+    position: absolute;
+    right: var(--chat-content-padding);
+    bottom: calc(100% + 12px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 50%;
+    background: var(--surface-elevated);
+    color: var(--text-secondary);
+    box-shadow: var(--shadow-soft);
+    cursor: pointer;
+    transition: transform 0.16s ease, background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+    z-index: 2;
+}
+
+.scroll-to-bottom-button:hover {
+    transform: translateY(-1px);
+    background: var(--surface-subtle);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+}
+
+html[data-theme="dark"] .scroll-to-bottom-button {
+    background: #2C2C2E;
+    border-color: #3A3A3D;
 }
 
 .search-box{

@@ -16,6 +16,13 @@ const SendIcon = () => (
   </svg>
 );
 
+const ArrowDownIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 5v14" />
+    <path d="m19 12-7 7-7-7" />
+  </svg>
+);
+
 const ChatInput = () => {
   const {
     abortGeneration,
@@ -23,11 +30,14 @@ const ChatInput = () => {
     attachedFiles,
     fileInputRef,
     input,
+    isAtBottom,
     isGenerating,
     isVoiceSupported,
+    messages,
     onSent,
     openFilePicker,
     removeFile,
+    scrollToBottom,
     setInput,
     toggleVoiceInput,
     voiceError,
@@ -66,6 +76,17 @@ const ChatInput = () => {
 
   return (
     <div className="main-bottom">
+      {messages.length > 0 && !isAtBottom && (
+        <button
+          type="button"
+          className="scroll-to-bottom-button"
+          onClick={() => scrollToBottom("smooth")}
+          aria-label="跳转到底部"
+          title="跳转到底部"
+        >
+          <ArrowDownIcon />
+        </button>
+      )}
       {attachedFiles.length > 0 && (
         <div className="attachment-preview">
           {attachedFiles.map((entry, index) => (

@@ -14,7 +14,24 @@ function toViewMessage(m) {
   };
 }
 
-export function useChat({ currentSessionId, modelProvider = 'deepseek', onSessionUpdated }) {
+function getMessagesWithContextTurnLimit(messages, contextTurnCount) {
+  if (contextTurnCount === -1) {
+    return messages;
+  }
+
+  const userMessageIndexes = messages.reduce((indexes, message, index) => {
+    if (message.role === 'user') {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
+  const keepFromUserIndex = Math.max(userMessageIndexes.length - contextTurnCount - 1, 0);
+  const keepFromMessageIndex = userMessageIndexes[keepFromUserIndex] ?? 0;
+
+  return messages.slice(keepFromMessageIndex);
+}
+
+export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider = 'deepseek', onSessionUpdated }) {
   const [messages, setMessages] = useState([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -186,13 +203,13 @@ export function useChat({ currentSessionId, modelProvider = 'deepseek', onSessio
     setMessages(messagesWithAI);
 
     await _runStream(
-      nextMessages.map(m => ({ role: m.role, content: m.content })),
+      getMessagesWithContextTurnLimit(nextMessages, contextTurnCount).map(m => ({ role: m.role, content: m.content })),
       messagesWithAI,
       aiMessage,
       currentSessionId,
       modelProvider
     );
-  }, [messages, currentSessionId, modelProvider, onSessionUpdated, _runStream]);
+  }, [messages, currentSessionId, contextTurnCount, modelProvider, onSessionUpdated, _runStream]);
 
   const regenerate = useCallback(async () => {
     if (isGenerating) return;
@@ -221,13 +238,13 @@ export function useChat({ currentSessionId, modelProvider = 'deepseek', onSessio
     setMessages(withPlaceholder);
 
     await _runStream(
-      historyMessages.map(m => ({ role: m.role, content: m.content })),
+      getMessagesWithContextTurnLimit(historyMessages, contextTurnCount).map(m => ({ role: m.role, content: m.content })),
       withPlaceholder,
       aiPlaceholder,
       currentSessionId,
       modelProvider
     );
-  }, [messages, currentSessionId, isGenerating, modelProvider, _runStream]);
+  }, [messages, currentSessionId, contextTurnCount, isGenerating, modelProvider, _runStream]);
 
   const abortGeneration = useCallback(() => {
     const sid = currentSessionIdRef.current;

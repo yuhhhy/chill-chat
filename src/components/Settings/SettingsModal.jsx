@@ -11,10 +11,32 @@ const settingsItems = [
   { id: 'about', label: '关于' }
 ];
 
+const contextTurnOptions = [
+  { value: 0, label: '0' },
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 5, label: '5' },
+  { value: 10, label: '10' },
+  { value: 20, label: '20' },
+  { value: -1, label: '全部' }
+];
+
 const SettingsModal = ({ onClose }) => {
   const [activeSection, setActiveSection] = useState('general');
-  const { modelProvider, setModelProvider, setTheme, theme } = useContext(Context);
+  const {
+    contextTurnCount,
+    modelProvider,
+    setContextTurnCount,
+    setModelProvider,
+    setTheme,
+    theme
+  } = useContext(Context);
   const isDarkMode = theme === 'dark';
+  const contextTurnIndex = Math.max(
+    contextTurnOptions.findIndex((option) => option.value === contextTurnCount),
+    0
+  );
+  const contextTurnLabel = contextTurnOptions[contextTurnIndex].label;
 
   return (
     <div className="settings-overlay" role="presentation" onMouseDown={onClose}>
@@ -72,6 +94,50 @@ const SettingsModal = ({ onClose }) => {
                     </span>
                     <span className="theme-switch-label">{isDarkMode ? '开启' : '关闭'}</span>
                   </button>
+                </div>
+
+                <div className="settings-row settings-row-stacked">
+                  <span className="settings-row-copy">
+                    <span className="settings-row-title">携带上下文对话次数</span>
+                    <span className="settings-row-description">
+                      每次发送时额外带上最近几轮历史对话；数值越大，连续性越好，但请求会更长。
+                    </span>
+                  </span>
+
+                  <div className="context-slider-control">
+                    <div className="context-slider-value" aria-live="polite">
+                      {contextTurnCount === -1 ? '全部历史' : `${contextTurnCount} 轮`}
+                    </div>
+                    <input
+                      className="context-slider"
+                      type="range"
+                      min="0"
+                      max={contextTurnOptions.length - 1}
+                      step="1"
+                      value={contextTurnIndex}
+                      aria-label="携带上下文对话次数"
+                      aria-valuetext={contextTurnCount === -1 ? '全部历史' : `${contextTurnCount} 轮`}
+                      onChange={(event) => {
+                        const nextOption = contextTurnOptions[Number(event.target.value)];
+                        setContextTurnCount(nextOption.value);
+                      }}
+                      style={{
+                        '--slider-progress': `${(contextTurnIndex / (contextTurnOptions.length - 1)) * 100}%`,
+                        '--slider-step': `${100 / (contextTurnOptions.length - 1)}%`
+                      }}
+                    />
+                    <div className="context-slider-marks" aria-hidden="true">
+                      {contextTurnOptions.map((option) => (
+                        <span
+                          key={option.value}
+                          className={`context-slider-mark ${option.label === contextTurnLabel ? 'active' : ''}`}
+                          style={{ left: `${(contextTurnOptions.indexOf(option) / (contextTurnOptions.length - 1)) * 100}%` }}
+                        >
+                          {option.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : activeSection === 'model' ? (
