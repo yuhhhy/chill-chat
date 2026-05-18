@@ -18,11 +18,18 @@ const ContextProvider = (props) => {
 
   const virtuosoRef = useRef(null);
   const streamedContentRef = useRef("");
+  const currentSessionIdRef = useRef(null);
+  const sessionMessagesRef = useRef(new Map()); // sessionId -> in-progress messages[]
+  const generatingSessionsRef = useRef(new Set());
 
   const currentSessionId = useMemo(() => {
     const match = location.pathname.match(/^\/chat\/(.+)$/);
     return match ? match[1] : null;
   }, [location.pathname]);
+
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
 
   const showResult = messages.length > 0;
 
@@ -51,16 +58,25 @@ const ContextProvider = (props) => {
   // Load messages whenever the session in the URL changes
   useEffect(() => {
     if (!currentSessionId) return;
-    streamParser.abort(false);
-    setMessages([]);
-    setIsLoadingMessages(true);
     setInput("");
-    setIsGenerating(false);
     setIsAtBottom(true);
+
+    // If this session has an ongoing generation, restore its live state
+    if (generatingSessionsRef.current.has(currentSessionId) && sessionMessagesRef.current.has(currentSessionId)) {
+      setMessages(sessionMessagesRef.current.get(currentSessionId));
+      setIsGenerating(true);
+      setIsLoadingMessages(false);
+      return;
+    }
+
+    setMessages([]);
+    setIsGenerating(false);
+    setIsLoadingMessages(true);
 
     fetch(`/api/sessions/${currentSessionId}/messages`)
       .then(r => r.json())
       .then(rows => {
+        if (currentSessionIdRef.current !== currentSessionId) return; // stale response
         setMessages(rows.map(m => ({
           id: m.id,
           role: m.role,
@@ -154,6 +170,23 @@ const ContextProvider = (props) => {
     streamedContentRef.current = "";
 
     const capturedSessionId = currentSessionId;
+    generatingSessionsRef.current.add(capturedSessionId);
+    sessionMessagesRef.current.set(capturedSessionId, messagesWithAI);
+
+    const syncMessages = (updated) => {
+      sessionMessagesRef.current.set(capturedSessionId, updated);
+      if (currentSessionIdRef.current === capturedSessionId) {
+        setMessages(updated);
+      }
+    };
+
+    const finishGeneration = () => {
+      generatingSessionsRef.current.delete(capturedSessionId);
+      sessionMessagesRef.current.delete(capturedSessionId);
+      if (currentSessionIdRef.current === capturedSessionId) {
+        setIsGenerating(false);
+      }
+    };
 
     try {
       const apiMessages = nextMessages.map(m => ({ role: m.role, content: m.content }));
@@ -162,7 +195,7 @@ const ContextProvider = (props) => {
         apiMessages,
         (chunk) => {
           streamedContentRef.current += chunk;
-          setMessages(messagesWithAI.map(msg =>
+          syncMessages(messagesWithAI.map(msg =>
             msg.id === aiMessage.id
               ? { ...msg, content: streamedContentRef.current }
               : msg
@@ -170,20 +203,22 @@ const ContextProvider = (props) => {
         },
         (error) => {
           console.error("Stream error:", error);
-          setMessages(messagesWithAI.map(msg =>
+          const failed = messagesWithAI.map(msg =>
             msg.id === aiMessage.id
               ? { ...msg, status: "failed", content: streamedContentRef.current || "生成失败，请重试" }
               : msg
-          ));
-          setIsGenerating(false);
+          );
+          finishGeneration();
+          syncMessages(failed);
         },
         () => {
-          setMessages(messagesWithAI.map(msg =>
+          const completed = messagesWithAI.map(msg =>
             msg.id === aiMessage.id
               ? { ...msg, status: "completed", content: streamedContentRef.current }
               : msg
-          ));
-          setIsGenerating(false);
+          );
+          finishGeneration();
+          syncMessages(completed);
 
           // Save assistant message
           fetch(`/api/sessions/${capturedSessionId}/messages`, {
@@ -191,16 +226,27 @@ const ContextProvider = (props) => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ messages: [{ role: "assistant", content: streamedContentRef.current }] })
           });
+        },
+        () => {
+          // This generation was superseded by a new fetchStream call
+          const aborted = messagesWithAI.map(msg =>
+            msg.id === aiMessage.id
+              ? { ...msg, status: "aborted", content: streamedContentRef.current }
+              : msg
+          );
+          finishGeneration();
+          syncMessages(aborted);
         }
       );
     } catch (error) {
       console.error("Error:", error);
-      setMessages(messagesWithAI.map(msg =>
+      const failed = messagesWithAI.map(msg =>
         msg.id === aiMessage.id
           ? { ...msg, status: "failed", content: "生成失败，请重试" }
           : msg
-      ));
-      setIsGenerating(false);
+      );
+      finishGeneration();
+      syncMessages(failed);
     }
   }, [input, isGenerating, messages, currentSessionId]);
 
@@ -218,7 +264,10 @@ const ContextProvider = (props) => {
   } = useSpeechRecognition({ onTranscript: handleVoiceTranscript, sessionId: currentSessionId });
 
   const abortGeneration = useCallback(() => {
+    const sid = currentSessionIdRef.current;
     streamParser.abort();
+    generatingSessionsRef.current.delete(sid);
+    sessionMessagesRef.current.delete(sid);
     setIsGenerating(false);
     setMessages(prev =>
       prev.map(msg => msg.status === "generating" ? { ...msg, status: "aborted" } : msg)

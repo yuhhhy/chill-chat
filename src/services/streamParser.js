@@ -7,10 +7,22 @@ class StreamParser {
     this.flushInterval = null;
     this.isFlushing = false;
     this.currentOnChunk = null;
+    this.currentOnAbort = null;
   }
 
-  async fetchStream(messages, onChunk, onError, onComplete) {
+  async fetchStream(messages, onChunk, onError, onComplete, onAbort) {
+    // Abort any previous stream and notify the old caller
+    if (this.abortController) {
+      this.stopFlush();
+      this.renderBuffer = '';
+      this.currentOnChunk = null;
+      const prevOnAbort = this.currentOnAbort;
+      this.currentOnAbort = null;
+      this.abortController.abort();
+      if (prevOnAbort) prevOnAbort();
+    }
     this.abortController = new AbortController();
+    this.currentOnAbort = onAbort ?? null;
     this.sseBuffer = '';
     this.renderBuffer = '';
     this.isFlushing = false;
@@ -141,6 +153,7 @@ class StreamParser {
       this.renderBuffer = '';
       this.currentOnChunk = null;
     }
+    this.currentOnAbort = null;
     this.stopFlush();
     if (this.abortController) {
       this.abortController.abort();

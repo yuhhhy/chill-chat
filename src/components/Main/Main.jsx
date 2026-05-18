@@ -14,10 +14,9 @@ const MessageRow = ({ message }) => (
     />
     <div className="message-content">
       {message.status === "generating" && !message.content ? (
-        <div className="loader">
-          <hr />
-          <hr />
-          <hr />
+        <div className="thinking-indicator">
+          <div className="thinking-spinner" />
+          <span>思考中</span>
         </div>
       ) : (
         <div className="markdown-content">
