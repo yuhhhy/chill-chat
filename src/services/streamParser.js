@@ -8,6 +8,8 @@ class StreamParser {
     this.isFlushing = false;
     this.currentOnChunk = null;
     this.currentOnAbort = null;
+    this.pendingComplete = null;
+    this.streamDone = false;
   }
 
   async fetchStream(messages, provider, onChunk, onError, onComplete, onAbort) {
@@ -15,6 +17,8 @@ class StreamParser {
     if (this.abortController) {
       this.stopFlush();
       this.renderQueue = [];
+      this.streamDone = false;
+      this.pendingComplete = null;
       this.currentOnChunk = null;
       const prevOnAbort = this.currentOnAbort;
       this.currentOnAbort = null;
@@ -26,8 +30,10 @@ class StreamParser {
     this.sseBuffer = '';
     this.renderQueue = [];
     this.isFlushing = false;
+    this.streamDone = false;
+    this.pendingComplete = null;
     this.currentOnChunk = onChunk;
-    
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -48,28 +54,22 @@ class StreamParser {
         const { done, value } = await reader.read();
 
         if (done) {
-          this.flushAll();
-          this.currentOnAbort = null;
-          onComplete();
-          this.stopFlush();
+          this.markStreamDone(onComplete);
           break;
         }
 
         const chunk = this.textDecoder.decode(value, { stream: true });
         this.sseBuffer += chunk;
-        
+
         const lines = this.sseBuffer.split('\n');
         this.sseBuffer = lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim();
-            
+
             if (data === '[DONE]') {
-              this.flushAll();
-              this.currentOnAbort = null;
-              onComplete();
-              this.stopFlush();
+              this.markStreamDone(onComplete);
               return;
             }
 
@@ -78,6 +78,7 @@ class StreamParser {
 
               if (json.error) {
                 this.currentOnAbort = null;
+                this.pendingComplete = null;
                 this.stopFlush();
                 onError(new Error(json.error));
                 return;
@@ -106,15 +107,28 @@ class StreamParser {
         this.flushAll();
       } else {
         this.currentOnAbort = null;
+        this.pendingComplete = null;
         this.stopFlush();
         onError(error);
       }
     }
   }
 
+  markStreamDone(onComplete) {
+    this.currentOnAbort = null;
+    if (this.renderQueue.length === 0) {
+      this.stopFlush();
+      onComplete();
+    } else {
+      // Let the interval drain naturally, fire onComplete when queue empties
+      this.streamDone = true;
+      this.pendingComplete = onComplete;
+    }
+  }
+
   addToRenderBuffer(content, type = 'content') {
     this.renderQueue.push({ type, content });
-    
+
     if (!this.isFlushing) {
       this.startFlush();
     }
@@ -124,7 +138,7 @@ class StreamParser {
     this.isFlushing = true;
     this.flushInterval = setInterval(() => {
       this.flushChunk();
-    }, 50);
+    }, 16);
   }
 
   stopFlush() {
@@ -137,13 +151,24 @@ class StreamParser {
 
   flushChunk() {
     if (this.renderQueue.length === 0) {
+      if (this.streamDone) {
+        this.streamDone = false;
+        const onComplete = this.pendingComplete;
+        this.pendingComplete = null;
+        this.stopFlush();
+        if (onComplete) onComplete();
+      }
       return;
     }
 
+    // Adaptive: drain buffer in ~20 ticks (1s), minimum 6 chars/tick for typewriter feel
+    const pendingChars = this.renderQueue.reduce((sum, item) => sum + item.content.length, 0);
+    const chunkSize = Math.max(12, Math.ceil(pendingChars / 20));
+
     const current = this.renderQueue[0];
-    const chunkSize = Math.min(8, current.content.length);
-    const chunk = current.content.substring(0, chunkSize);
-    current.content = current.content.substring(chunkSize);
+    const take = Math.min(chunkSize, current.content.length);
+    const chunk = current.content.substring(0, take);
+    current.content = current.content.substring(take);
 
     if (current.content.length === 0) {
       this.renderQueue.shift();
@@ -155,8 +180,14 @@ class StreamParser {
   }
 
   flushAll() {
+    this.streamDone = false;
+    this.pendingComplete = null;
     while (this.renderQueue.length > 0) {
-      this.flushChunk();
+      const current = this.renderQueue[0];
+      if (this.currentOnChunk) {
+        this.currentOnChunk({ type: current.type, content: current.content });
+      }
+      this.renderQueue.shift();
     }
   }
 
@@ -166,6 +197,8 @@ class StreamParser {
       this.currentOnChunk = null;
     }
     this.currentOnAbort = null;
+    this.streamDone = false;
+    this.pendingComplete = null;
     this.stopFlush();
     if (this.abortController) {
       this.abortController.abort();
@@ -180,6 +213,8 @@ class StreamParser {
     this.abortController = null;
     this.isFlushing = false;
     this.currentOnChunk = null;
+    this.streamDone = false;
+    this.pendingComplete = null;
   }
 }
 

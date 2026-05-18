@@ -120,6 +120,10 @@
     transition: opacity 0.1s ease;
 }
 
+.sidebar.collapsed .recent {
+    display: none;
+}
+
 /* Resize handle */
 .resize-handle {
     position: absolute;
