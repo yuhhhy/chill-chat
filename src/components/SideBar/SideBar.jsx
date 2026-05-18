@@ -54,7 +54,7 @@ const SideBar = () => {
                             className={`recent-entry ${session.id === currentSessionId ? 'active' : ''}`}
                         >
                             <img src={assets.chat_icon} alt="" className="chat-icon" />
-                            <p className="label">{session.title.slice(0, 18)}...</p>
+                            <p className="label session-title">{session.title}</p>
                             <img
                                 src={assets.trash}
                                 onClick={(e) => {
