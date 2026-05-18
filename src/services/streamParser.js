@@ -175,4 +175,4 @@ class StreamParser {
   }
 }
 
-export default new StreamParser();
+export default StreamParser;

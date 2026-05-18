@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchMessages, saveMessages } from '../api/messages.js';
-import streamParser from '../services/streamParser.js';
+import StreamParser from '../services/streamParser.js';
 
 function toViewMessage(m) {
   return {
@@ -17,10 +17,11 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const streamedContentRef = useRef('');
   const currentSessionIdRef = useRef(currentSessionId);
   const generatingSessionsRef = useRef(new Set());
   const sessionMessagesRef = useRef(new Map());
+  // One StreamParser instance per session — allows true concurrent background generation
+  const streamParsersRef = useRef(new Map());
 
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
@@ -76,11 +77,17 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
     };
     const messagesWithAI = [...nextMessages, aiMessage];
     setMessages(messagesWithAI);
-    streamedContentRef.current = '';
+
+    // Per-send accumulator: closure variable, never shared across concurrent sessions
+    let streamedContent = '';
 
     const capturedSessionId = currentSessionId;
     generatingSessionsRef.current.add(capturedSessionId);
     sessionMessagesRef.current.set(capturedSessionId, messagesWithAI);
+
+    // Dedicated parser instance — never interferes with other sessions' streams
+    const parser = new StreamParser();
+    streamParsersRef.current.set(capturedSessionId, parser);
 
     const syncMessages = (updated) => {
       sessionMessagesRef.current.set(capturedSessionId, updated);
@@ -92,6 +99,7 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
     const finishGeneration = () => {
       generatingSessionsRef.current.delete(capturedSessionId);
       sessionMessagesRef.current.delete(capturedSessionId);
+      streamParsersRef.current.delete(capturedSessionId);
       if (currentSessionIdRef.current === capturedSessionId) {
         setIsGenerating(false);
       }
@@ -100,13 +108,13 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
     try {
       const apiMessages = nextMessages.map(m => ({ role: m.role, content: m.content }));
 
-      await streamParser.fetchStream(
+      await parser.fetchStream(
         apiMessages,
         (chunk) => {
-          streamedContentRef.current += chunk;
+          streamedContent += chunk;
           syncMessages(messagesWithAI.map(msg =>
             msg.id === aiMessage.id
-              ? { ...msg, content: streamedContentRef.current }
+              ? { ...msg, content: streamedContent }
               : msg
           ));
         },
@@ -114,7 +122,7 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
           console.error('Stream error:', error);
           const failed = messagesWithAI.map(msg =>
             msg.id === aiMessage.id
-              ? { ...msg, status: 'failed', content: streamedContentRef.current || '生成失败，请重试' }
+              ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试' }
               : msg
           );
           finishGeneration();
@@ -123,17 +131,17 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
         () => {
           const completed = messagesWithAI.map(msg =>
             msg.id === aiMessage.id
-              ? { ...msg, status: 'completed', content: streamedContentRef.current }
+              ? { ...msg, status: 'completed', content: streamedContent }
               : msg
           );
           finishGeneration();
           syncMessages(completed);
-          saveMessages(capturedSessionId, [{ role: 'assistant', content: streamedContentRef.current }]);
+          saveMessages(capturedSessionId, [{ role: 'assistant', content: streamedContent }]);
         },
         () => {
           const aborted = messagesWithAI.map(msg =>
             msg.id === aiMessage.id
-              ? { ...msg, status: 'aborted', content: streamedContentRef.current }
+              ? { ...msg, status: 'aborted', content: streamedContent }
               : msg
           );
           finishGeneration();
@@ -154,7 +162,12 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
 
   const abortGeneration = useCallback(() => {
     const sid = currentSessionIdRef.current;
-    streamParser.abort();
+    // Abort only the current session's parser — other sessions keep generating
+    const parser = streamParsersRef.current.get(sid);
+    if (parser) {
+      parser.abort();
+      streamParsersRef.current.delete(sid);
+    }
     generatingSessionsRef.current.delete(sid);
     sessionMessagesRef.current.delete(sid);
     setIsGenerating(false);
