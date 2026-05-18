@@ -11,18 +11,19 @@ const MarkdownRenderer = ({ content }) => {
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[rehypeRaw, rehypeHighlight]}
       components={{
-        code({ node, inline, className, children, ...props }) {
+        code({ node, className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || '');
           const language = match ? match[1] : '';
-          
-          if (inline) {
+          const isInline = node?.tagName === 'code' && node?.position?.start.line === node?.position?.end.line && !match;
+
+          if (isInline) {
             return (
               <code className={className} {...props}>
                 {children}
               </code>
             );
           }
-          
+
           return (
             <code className={`hljs language-${language}`} {...props}>
               {children}
