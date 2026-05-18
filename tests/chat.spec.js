@@ -10,7 +10,7 @@ test('能发消息并收到 AI 回复', async ({ page }) => {
   await page.goto('http://localhost:5173');
   await page.waitForURL(/\/chat\/.+/, { timeout: 10000 });
 
-  const input = page.locator('input[type="text"]').first();
+  const input = page.locator('textarea[placeholder="在这里输入"]').first();
   await input.fill('你好，请用一句话介绍你自己');
   await input.press('Enter');
 

@@ -1,7 +1,7 @@
 import http from 'http';
 import dotenv from 'dotenv';
 import { getSessions, createSession, deleteSession } from './handlers/sessions.js';
-import { getMessages, addMessages } from './handlers/messages.js';
+import { getMessages, addMessages, deleteMessage } from './handlers/messages.js';
 import { handleChatStream } from './handlers/chat.js';
 
 dotenv.config();
@@ -55,6 +55,13 @@ const server = http.createServer((req, res) => {
     const sessionId = decodeURIComponent(messagesMatch[1]);
     if (req.method === 'GET')  return getMessages(req, res, { ...ctx, sessionId });
     if (req.method === 'POST') return addMessages(req, res, { ...ctx, sessionId });
+  }
+
+  const messageItemMatch = path.match(/^\/api\/sessions\/([^/?]+)\/messages\/([^/?]+)$/);
+  if (messageItemMatch) {
+    const sessionId  = decodeURIComponent(messageItemMatch[1]);
+    const messageId  = decodeURIComponent(messageItemMatch[2]);
+    if (req.method === 'DELETE') return deleteMessage(req, res, { ...ctx, sessionId, messageId });
   }
 
   res.statusCode = 404;

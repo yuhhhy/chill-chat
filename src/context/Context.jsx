@@ -2,6 +2,7 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState } from
 import { useSessions } from "../hooks/useSessions.js";
 import { useChat } from "../hooks/useChat.js";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
+import { useFileAttachment } from "../hooks/useFileAttachment.js";
 
 export const Context = createContext();
 
@@ -9,21 +10,31 @@ const ContextProvider = ({ children }) => {
   const [input, setInput] = useState("");
   const [isAtBottom, setIsAtBottom] = useState(true);
   const virtuosoRef = useRef(null);
+  const inputDraftsRef = useRef(new Map()); // sessionId -> draft text
+  const prevSessionIdRef = useRef(null);
 
   const {
     sessions, currentSessionId,
     createNewSession, loadSession, deleteSession, updateSession
   } = useSessions();
 
-  const { messages, isLoadingMessages, isGenerating, send, abortGeneration } = useChat({
+  const { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate } = useChat({
     currentSessionId,
     onSessionUpdated: updateSession
   });
 
+  const { attachedFiles, fileInputRef, openFilePicker, addFiles, removeFile, clearFiles } = useFileAttachment();
+
+  // On session switch: save draft for the session we're leaving, restore draft for the new one
   useEffect(() => {
-    setInput("");
+    const prev = prevSessionIdRef.current;
+    prevSessionIdRef.current = currentSessionId;
+    if (prev !== null) {
+      inputDraftsRef.current.set(prev, input);
+    }
+    setInput(inputDraftsRef.current.get(currentSessionId) ?? "");
     setIsAtBottom(true);
-  }, [currentSessionId]);
+  }, [currentSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scrollToBottom = useCallback((behavior = "auto") => {
     if (!virtuosoRef.current) return;
@@ -39,9 +50,11 @@ const ContextProvider = ({ children }) => {
     const text = (prompt !== undefined ? prompt : input).trim();
     if (!text) return;
     setInput("");
+    inputDraftsRef.current.delete(currentSessionId);
+    clearFiles();
     setIsAtBottom(true);
     await send(text);
-  }, [isGenerating, input, send]);
+  }, [isGenerating, input, send, currentSessionId, clearFiles]);
 
   const handleVoiceTranscript = useCallback((transcript) => {
     setInput(transcript);
@@ -58,9 +71,12 @@ const ContextProvider = ({ children }) => {
 
   const contextValue = useMemo(() => ({
     abortGeneration,
+    addFiles,
+    attachedFiles,
     createNewSession,
     currentSessionId,
     deleteSession,
+    fileInputRef,
     input,
     isAtBottom,
     isGenerating,
@@ -69,6 +85,9 @@ const ContextProvider = ({ children }) => {
     loadSession,
     messages,
     onSent,
+    openFilePicker,
+    regenerate,
+    removeFile,
     scrollToBottom,
     sessions,
     setInput,
@@ -80,9 +99,12 @@ const ContextProvider = ({ children }) => {
     voiceTranscript
   }), [
     abortGeneration,
+    addFiles,
+    attachedFiles,
     createNewSession,
     currentSessionId,
     deleteSession,
+    fileInputRef,
     input,
     isAtBottom,
     isGenerating,
@@ -91,6 +113,9 @@ const ContextProvider = ({ children }) => {
     loadSession,
     messages,
     onSent,
+    openFilePicker,
+    regenerate,
+    removeFile,
     scrollToBottom,
     sessions,
     toggleVoiceInput,
