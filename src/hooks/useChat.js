@@ -129,6 +129,17 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
           syncMessages(failed);
         },
         () => {
+          if (!streamedContent.trim()) {
+            const failed = messagesWithAI.map(msg =>
+              msg.id === aiMessage.id
+                ? { ...msg, status: 'failed', content: '生成失败，请重试' }
+                : msg
+            );
+            finishGeneration();
+            syncMessages(failed);
+            return;
+          }
+
           const completed = messagesWithAI.map(msg =>
             msg.id === aiMessage.id
               ? { ...msg, status: 'completed', content: streamedContent }

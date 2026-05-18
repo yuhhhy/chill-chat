@@ -43,10 +43,10 @@ class StreamParser {
       }
 
       const reader = response.body.getReader();
-      
+
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) {
           this.flushAll();
           this.currentOnAbort = null;
@@ -85,8 +85,8 @@ class StreamParser {
 
               if (json.choices && json.choices.length > 0) {
                 const delta = json.choices[0].delta;
-                const content = delta?.content || '';
-                
+                const content = delta?.content || delta?.reasoning_content || '';
+
                 if (content) {
                   this.addToRenderBuffer(content);
                 }
