@@ -398,18 +398,17 @@
 }
 
 .message-status {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 4px 8px;
+    margin: 8px 0 0;
     font-size: 12px;
-    border-radius: 4px;
-    background-color: #f0f0f0;
-    color: #666;
+    font-style: italic;
 }
 
-.message-status.error {
-    background-color: #fee;
-    color: #c00;
+.message-status.aborted {
+    color: #b8c2cc;
+}
+
+.message-status.failed {
+    color: #e05c5c;
 }
 
 .stop-icon {

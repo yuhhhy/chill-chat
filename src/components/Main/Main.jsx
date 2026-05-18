@@ -23,8 +23,8 @@ const MessageRow = ({ message }) => (
           <MarkdownRenderer content={message.content} />
         </div>
       )}
-      {message.status === "aborted" && <span className="message-status">已中断</span>}
-      {message.status === "failed" && <span className="message-status error">生成失败</span>}
+      {message.status === "aborted" && <p className="message-status aborted">— 已中断</p>}
+      {message.status === "failed" && <p className="message-status failed">生成失败，请重试</p>}
     </div>
   </div>
 );
