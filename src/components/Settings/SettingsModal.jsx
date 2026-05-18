@@ -48,11 +48,6 @@ const SettingsModal = ({ onClose }) => {
           <main className="settings-panel">
             {activeSection === 'model' ? (
               <>
-                <div className="settings-panel-heading">
-                  <p className="settings-kicker">Model Provider</p>
-                  <h3>模型设置</h3>
-                </div>
-
                 <div className="model-grid" role="radiogroup" aria-label="选择模型">
                   {modelProviderOptions.map((model) => (
                     <button

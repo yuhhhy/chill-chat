@@ -5,6 +5,7 @@ export const modelProviderOptions = [
     id: 'chatgpt',
     label: 'ChatGPT',
     description: 'OpenAI Chat Completions',
+    icon: assets.chatgpt_icon,
     initials: 'C',
     tone: 'chatgpt'
   },
@@ -28,6 +29,7 @@ export const modelProviderOptions = [
     id: 'claude',
     label: 'Claude',
     description: 'Anthropic Messages API',
+    icon: assets.claude_icon,
     initials: 'C',
     tone: 'claude'
   }

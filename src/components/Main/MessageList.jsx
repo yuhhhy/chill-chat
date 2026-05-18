@@ -3,7 +3,6 @@ import { Virtuoso } from "react-virtuoso";
 import { Context } from "../../context/Context";
 import MarkdownRenderer from "../MarkdownRenderer/MarkdownRenderer";
 import ModelAvatar from "../ModelAvatar/ModelAvatar";
-import { getModelProviderMeta } from "../../config/modelProviders";
 
 const CopyIcon = () => (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -38,10 +37,9 @@ const ReasoningPanel = ({ content, isGenerating }) => {
 };
 
 const MessageRow = ({ message, isLastAI }) => {
-  const { regenerate, isGenerating } = useContext(Context);
+  const { regenerate, isGenerating, modelNames } = useContext(Context);
   const [copied, setCopied] = useState(false);
   const messageProvider = message.modelProvider || 'deepseek';
-  const messageModel = getModelProviderMeta(messageProvider);
 
   const handleCopy = async () => {
     try {
@@ -67,7 +65,6 @@ const MessageRow = ({ message, isLastAI }) => {
     <div className="message-item ai-message">
       <ModelAvatar provider={messageProvider} className="message-avatar" />
       <div className="message-content">
-        <div className="message-model-name">{messageModel.label}</div>
         <ReasoningPanel
           content={message.reasoningContent}
           isGenerating={message.status === "generating"}
@@ -104,6 +101,9 @@ const MessageRow = ({ message, isLastAI }) => {
               >
                 <RegenerateIcon />
               </button>
+            )}
+            {modelNames[messageProvider] && (
+              <span className="action-model-name">{modelNames[messageProvider]}</span>
             )}
           </div>
         )}

@@ -14,23 +14,15 @@
 }
 
 .model-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    width: 80%;
+    height: 80%;
+    object-fit: contain;
 }
 
-.model-avatar-chatgpt {
-    background: #111827;
-}
-
-.model-avatar-gemini {
-    background: #eef4ff;
-}
-
-.model-avatar-deepseek {
-    background: #e8f0fe;
-}
-
+.model-avatar-chatgpt,
+.model-avatar-gemini,
+.model-avatar-deepseek,
 .model-avatar-claude {
-    background: #d97745;
+    background: #ffffff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
 }

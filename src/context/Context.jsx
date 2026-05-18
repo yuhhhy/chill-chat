@@ -16,9 +16,17 @@ const ContextProvider = ({ children }) => {
     if (typeof window === "undefined") return DEFAULT_MODEL_PROVIDER;
     return window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY) || DEFAULT_MODEL_PROVIDER;
   });
+  const [modelNames, setModelNames] = useState({});
   const virtuosoRef = useRef(null);
   const inputDraftsRef = useRef(new Map()); // sessionId -> draft text
   const prevSessionIdRef = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/config/models')
+      .then(r => r.json())
+      .then(setModelNames)
+      .catch(() => {});
+  }, []);
 
   const {
     sessions, currentSessionId,
@@ -106,6 +114,7 @@ const ContextProvider = ({ children }) => {
     isVoiceSupported,
     loadSession,
     messages,
+    modelNames,
     modelProvider,
     onSent,
     openFilePicker,
@@ -136,6 +145,7 @@ const ContextProvider = ({ children }) => {
     isVoiceSupported,
     loadSession,
     messages,
+    modelNames,
     modelProvider,
     onSent,
     openFilePicker,

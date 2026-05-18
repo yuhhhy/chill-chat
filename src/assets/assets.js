@@ -13,9 +13,10 @@ import message_icon from './message_icon.png'
 import code_icon from './code_icon.png'
 import send_icon from './send_icon.png'
 import deepseek_icon from './deepseek_icon.png'
+import gemini_icon from './gemini_icon.png'
+import claude_icon from './claude_icon.svg'
+import chatgpt_icon from './chatgpt_icon.svg'
 import trash from './trash_icon.svg'
-import chat_icon from './chat_icon.svg'
-
 export const assets = {
     history_icon,
     menu_icon,
@@ -32,6 +33,8 @@ export const assets = {
     code_icon,
     send_icon,
     deepseek_icon,
-    trash,
-    chat_icon
+    gemini_icon,
+    claude_icon,
+    chatgpt_icon,
+    trash
 }

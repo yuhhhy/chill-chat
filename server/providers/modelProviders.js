@@ -302,6 +302,12 @@ function streamClaude(messages, res, config) {
   });
 }
 
+export function getModelNames() {
+  return Object.fromEntries(
+    Object.entries(providerConfig).map(([id, cfg]) => [id, process.env[cfg.model] || ''])
+  );
+}
+
 export function streamChat(messages, res, provider) {
   const resolvedProvider = resolveProvider(provider);
   const config = getRuntimeConfig(resolvedProvider);

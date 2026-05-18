@@ -53,7 +53,6 @@ const SideBar = ({ onOpenSettings }) => {
                             onClick={() => loadSession(session.id)}
                             className={`recent-entry ${session.id === currentSessionId ? 'active' : ''}`}
                         >
-                            <img src={assets.chat_icon} alt="" className="chat-icon" />
                             <p className="label session-title">{session.title}</p>
                             <img
                                 src={assets.trash}
