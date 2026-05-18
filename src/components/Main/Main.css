@@ -160,6 +160,12 @@ html[data-theme="dark"] .search-box {
     overflow-y: auto;
     line-height: 1.5;
     color: var(--text-primary);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.search-box textarea::-webkit-scrollbar {
+    display: none;
 }
 
 .search-box textarea::placeholder {
