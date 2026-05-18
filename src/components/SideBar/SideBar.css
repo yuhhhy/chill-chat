@@ -3,7 +3,8 @@
     display: inline-flex;
     flex-direction: column;
     justify-content: space-between;
-    background-color: #f0f4f9;
+    background-color: var(--surface-subtle);
+    color: var(--text-secondary);
     padding: 25px 15px;
     position: relative;
     overflow: hidden;
@@ -15,6 +16,18 @@
 .sidebar img {
     width: 20px;
     flex-shrink: 0;
+}
+
+html[data-theme="dark"] .sidebar .menu,
+html[data-theme="dark"] .sidebar .new-chat img,
+html[data-theme="dark"] .sidebar .bottom-item img {
+    filter: invert(86%) brightness(1.08);
+    opacity: 0.88;
+}
+
+html[data-theme="dark"] .sidebar .bottom-item:hover img,
+html[data-theme="dark"] .sidebar .new-chat:hover img {
+    opacity: 1;
 }
 
 .sidebar .menu {
@@ -29,10 +42,10 @@
     align-items: center;
     gap: 10px;
     padding: 10px;
-    background-color: #e6eaf1;
+    background-color: var(--surface-muted);
     border-radius: 50px;
     font-size: 16px;
-    color: grey;
+    color: var(--text-muted);
     cursor: pointer;
 }
 
@@ -54,18 +67,18 @@
     padding: 10px;
     padding-right: 12px;
     border-radius: 50px;
-    color: #282828;
+    color: var(--text-primary);
     cursor: pointer;
     transition: background-color 0.2s;
 }
 
 .sidebar .recent-entry:hover {
-    background-color: #e2e6eb;
+    background-color: var(--surface-hover);
 }
 
 .sidebar .recent-entry.active {
-    background-color: #d0d7de;
-    color: #0284c7;
+    background-color: var(--surface-active);
+    color: var(--accent-strong);
 }
 
 .sidebar .recent-entry .delete-icon {
@@ -139,7 +152,7 @@
 
 .resize-handle:hover,
 .resize-handle:active {
-    background: #c5ccd6;
+    background: var(--border-strong);
 }
 
 @media (max-width: 600px) {

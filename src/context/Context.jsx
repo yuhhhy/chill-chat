@@ -7,7 +7,9 @@ import { useFileAttachment } from "../hooks/useFileAttachment.js";
 export const Context = createContext();
 
 const MODEL_PROVIDER_STORAGE_KEY = "chill-chat:model-provider";
+const THEME_STORAGE_KEY = "chill-chat:theme";
 const DEFAULT_MODEL_PROVIDER = "deepseek";
+const DEFAULT_THEME = "light";
 
 const ContextProvider = ({ children }) => {
   const [input, setInput] = useState("");
@@ -15,6 +17,10 @@ const ContextProvider = ({ children }) => {
   const [modelProvider, setModelProviderState] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_MODEL_PROVIDER;
     return window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY) || DEFAULT_MODEL_PROVIDER;
+  });
+  const [theme, setThemeState] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_THEME;
+    return window.localStorage.getItem(THEME_STORAGE_KEY) || DEFAULT_THEME;
   });
   const [modelNames, setModelNames] = useState({});
   const virtuosoRef = useRef(null);
@@ -27,6 +33,11 @@ const ContextProvider = ({ children }) => {
       .then(setModelNames)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   const {
     sessions, currentSessionId,
@@ -65,6 +76,13 @@ const ContextProvider = ({ children }) => {
     setModelProviderState(provider);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(MODEL_PROVIDER_STORAGE_KEY, provider);
+    }
+  }, []);
+
+  const setTheme = useCallback((nextTheme) => {
+    setThemeState(nextTheme);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
     }
   }, []);
 
@@ -125,6 +143,8 @@ const ContextProvider = ({ children }) => {
     setInput,
     setIsAtBottom,
     setModelProvider,
+    setTheme,
+    theme,
     toggleVoiceInput,
     virtuosoRef,
     voiceError,
@@ -154,6 +174,8 @@ const ContextProvider = ({ children }) => {
     scrollToBottom,
     sessions,
     setModelProvider,
+    setTheme,
+    theme,
     toggleVoiceInput,
     voiceError,
     voiceInputStatus,

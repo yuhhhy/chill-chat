@@ -12,8 +12,9 @@ const settingsItems = [
 ];
 
 const SettingsModal = ({ onClose }) => {
-  const [activeSection, setActiveSection] = useState('model');
-  const { modelProvider, setModelProvider } = useContext(Context);
+  const [activeSection, setActiveSection] = useState('general');
+  const { modelProvider, setModelProvider, setTheme, theme } = useContext(Context);
+  const isDarkMode = theme === 'dark';
 
   return (
     <div className="settings-overlay" role="presentation" onMouseDown={onClose}>
@@ -46,7 +47,34 @@ const SettingsModal = ({ onClose }) => {
           </aside>
 
           <main className="settings-panel">
-            {activeSection === 'model' ? (
+            {activeSection === 'general' ? (
+              <div className="settings-section">
+                <div className="settings-section-heading">
+                  <h3>主题</h3>
+                  <p>调整应用的基础显示偏好。</p>
+                </div>
+
+                <div className="settings-row">
+                  <span className="settings-row-copy">
+                    <span className="settings-row-title">黑夜模式</span>
+                    <span className="settings-row-description">切换到低亮度界面，适合夜间或弱光环境。</span>
+                  </span>
+                  <button
+                    type="button"
+                    className={`theme-switch ${isDarkMode ? 'active' : ''}`}
+                    role="switch"
+                    aria-label="黑夜模式"
+                    aria-checked={isDarkMode}
+                    onClick={() => setTheme(isDarkMode ? 'light' : 'dark')}
+                  >
+                    <span className="theme-switch-track">
+                      <span className="theme-switch-thumb" />
+                    </span>
+                    <span className="theme-switch-label">{isDarkMode ? '开启' : '关闭'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : activeSection === 'model' ? (
               <>
                 <div className="model-grid" role="radiogroup" aria-label="选择模型">
                   {modelProviderOptions.map((model) => (
