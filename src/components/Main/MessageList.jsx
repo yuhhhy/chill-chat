@@ -1,8 +1,9 @@
 import React, { useContext, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { assets } from "../../assets/assets";
 import { Context } from "../../context/Context";
 import MarkdownRenderer from "../MarkdownRenderer/MarkdownRenderer";
+import ModelAvatar from "../ModelAvatar/ModelAvatar";
+import { getModelProviderMeta } from "../../config/modelProviders";
 
 const CopyIcon = () => (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -20,9 +21,27 @@ const RegenerateIcon = () => (
   </svg>
 );
 
+const ReasoningPanel = ({ content, isGenerating }) => {
+  if (!content) return null;
+
+  return (
+    <details className="reasoning-panel" open={isGenerating}>
+      <summary>
+        <span className="reasoning-chevron" />
+        <span>{isGenerating ? "正在思考" : "思考过程"}</span>
+      </summary>
+      <div className="reasoning-content">
+        <MarkdownRenderer content={content} />
+      </div>
+    </details>
+  );
+};
+
 const MessageRow = ({ message, isLastAI }) => {
   const { regenerate, isGenerating } = useContext(Context);
   const [copied, setCopied] = useState(false);
+  const messageProvider = message.modelProvider || 'deepseek';
+  const messageModel = getModelProviderMeta(messageProvider);
 
   const handleCopy = async () => {
     try {
@@ -46,12 +65,17 @@ const MessageRow = ({ message, isLastAI }) => {
 
   return (
     <div className="message-item ai-message">
-      <img src={assets.deepseek_icon} alt="" className="message-avatar" />
+      <ModelAvatar provider={messageProvider} className="message-avatar" />
       <div className="message-content">
+        <div className="message-model-name">{messageModel.label}</div>
+        <ReasoningPanel
+          content={message.reasoningContent}
+          isGenerating={message.status === "generating"}
+        />
         {message.status === "generating" && !message.content ? (
           <div className="thinking-indicator">
             <div className="thinking-spinner" />
-            <span>思考中</span>
+            <span>{message.reasoningContent ? "正在生成回复" : "思考中"}</span>
           </div>
         ) : (
           <div className="markdown-content">

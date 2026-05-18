@@ -1,8 +1,12 @@
 .main{
+    --chat-content-padding: clamp(36px, calc(6vw + 12px), 108px);
+    --prompt-card-min-width: 190px;
     flex: 1;
-    min-height: 100vh;
-    padding-bottom: 18vh;
+    height: 100vh;
+    min-height: 0;
+    padding-bottom: 0;
     position: relative;
+    overflow: hidden;
 }
 .main .nav{
     display: flex;
@@ -18,14 +22,18 @@
 }
 
 .main-container{
-    max-width: 900px;
-    margin: auto;
+    width: 100%;
+    height: calc(100vh - 80px);
+    min-height: 0;
+    position: relative;
+    display: flow-root;
 }
 .main .greet{
-    margin: 50px 0px;
+    max-width: calc(900px + (var(--chat-content-padding) * 2));
+    margin: 50px auto 0;
     font-size: 56px;
     font-weight: 500;
-    padding: 20px;
+    padding: 20px var(--chat-content-padding);
     color: #c4c7c5;
 }
 
@@ -35,10 +43,12 @@
     -webkit-text-fill-color: transparent;
 }
 .main .cards{
+    max-width: calc(900px + (var(--chat-content-padding) * 2));
+    margin: 0 auto;
     display: grid;
-    grid-template-columns: repeat(auto-fill,minmax(180px,1fr));
+    grid-template-columns: repeat(var(--visible-card-count, 4), minmax(var(--prompt-card-min-width), 1fr));
     gap: 15px;
-    padding: 20px;
+    padding: 20px var(--chat-content-padding);
 }
 .main .card{
     height: 200px;
@@ -67,11 +77,13 @@
 
 .main-bottom{
     position: absolute;
-    bottom: 40px;
-    width: 100%;
-    max-width: 900px;
-    padding: 0px 20px 12px;
-    margin: auto;
+    bottom: 64px;
+    left: 0;
+    right: 0;
+    width: min(100%, calc(900px + (var(--chat-content-padding) * 2)));
+    max-width: calc(900px + (var(--chat-content-padding) * 2));
+    margin: 0 auto;
+    padding: 0 var(--chat-content-padding) 12px;
 }
 
 .search-box{
@@ -79,6 +91,7 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 20px;
+    width: 100%;
     background-color: #f0f4f9;
     padding: 10px 20px;
     border-radius: 16px;
@@ -91,6 +104,7 @@
 }
 .search-box textarea{
     flex: 1;
+    min-width: 0;
     background: transparent;
     border: none;
     outline: none;
@@ -241,7 +255,8 @@
 }
 
 .result{
-    padding: 0px 5%;
+    width: 100%;
+    padding: 0;
     height: 70vh;
 }
 
@@ -300,7 +315,7 @@
     display: flex;
     gap: 12px;
     align-items: flex-start;
-    padding: 0 0 20px;
+    padding: 0 var(--chat-content-padding) 20px;
 }
 
 .message-avatar {
@@ -308,6 +323,14 @@
     height: 36px;
     border-radius: 50%;
     flex-shrink: 0;
+}
+
+.message-model-name {
+    margin-bottom: 6px;
+    color: #5f6368;
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.3;
 }
 
 /* AI message: full-width, no card */
@@ -356,6 +379,59 @@
 
 .message-content .markdown-content {
     line-height: 1.6;
+}
+
+.reasoning-panel {
+    margin-bottom: 12px;
+    color: #6b7280;
+}
+
+.reasoning-panel summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    list-style: none;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.4;
+    user-select: none;
+}
+
+.reasoning-panel summary::-webkit-details-marker {
+    display: none;
+}
+
+.reasoning-chevron {
+    width: 7px;
+    height: 7px;
+    border-right: 1.8px solid currentColor;
+    border-bottom: 1.8px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.16s ease;
+}
+
+.reasoning-panel[open] .reasoning-chevron {
+    transform: rotate(45deg);
+}
+
+.reasoning-content {
+    margin-top: 8px;
+    max-width: 760px;
+    color: #7a8494;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.reasoning-content p {
+    margin: 0.7em 0;
+}
+
+.reasoning-content p:first-child {
+    margin-top: 0;
+}
+
+.reasoning-content p:last-child {
+    margin-bottom: 0;
 }
 
 .message-content .markdown-content h1,
@@ -589,8 +665,8 @@
 .voice-status-bar {
     position: absolute;
     bottom: calc(100% + 6px);
-    left: 20px;
-    right: 20px;
+    left: var(--chat-content-padding);
+    right: var(--chat-content-padding);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -645,9 +721,14 @@
 
 /* Responsive Styles */
 @media (max-width:600px){
+    .main{
+        --chat-content-padding: 28px;
+        --prompt-card-min-width: 150px;
+    }
     .main-bottom textarea{
-        flex: none;
-        width: 150px;
+        flex: 1;
+        width: auto;
+        min-width: 0;
     }
     .main-bottom img{
         width: 20px;
@@ -660,9 +741,5 @@
     }
     .user-message .message-content {
         max-width: 82%;
-    }
-    .voice-status-bar {
-        left: 10px;
-        right: 10px;
     }
 }
