@@ -1,13 +1,16 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import streamParser from "../services/streamParser";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 
 export const Context = createContext();
 
 const ContextProvider = (props) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [input, setInput] = useState("");
   const [sessions, setSessions] = useState([]);
-  const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -15,235 +18,193 @@ const ContextProvider = (props) => {
   const virtuosoRef = useRef(null);
   const streamedContentRef = useRef("");
 
+  const currentSessionId = useMemo(() => {
+    const match = location.pathname.match(/^\/chat\/(.+)$/);
+    return match ? match[1] : null;
+  }, [location.pathname]);
+
   const showResult = messages.length > 0;
 
-  const createNewSession = useCallback(() => {
+  // On mount: load sessions, navigate to first or create one
+  useEffect(() => {
+    const initialSessionId = location.pathname.match(/^\/chat\/(.+)$/)?.[1] ?? null;
+
+    fetch('/api/sessions')
+      .then(r => r.json())
+      .then(data => {
+        setSessions(data);
+        if (initialSessionId) return; // URL already has a session
+        if (data.length > 0) {
+          navigate(`/chat/${data[0].id}`, { replace: true });
+        } else {
+          fetch('/api/sessions', { method: 'POST' })
+            .then(r => r.json())
+            .then(session => {
+              setSessions([session]);
+              navigate(`/chat/${session.id}`, { replace: true });
+            });
+        }
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load messages whenever the session in the URL changes
+  useEffect(() => {
+    if (!currentSessionId) return;
     streamParser.abort(false);
-
-    const newSession = {
-      id: Date.now(),
-      title: "New Chat",
-      messages: [],
-      createdAt: new Date().toISOString(),
-      isGenerating: false,
-      input: ""
-    };
-
-    setSessions((prev) => {
-      const cleaned = prev.map((s) =>
-        s.isGenerating
-          ? {
-              ...s,
-              isGenerating: false,
-              messages: s.messages.map((m) =>
-                m.status === "generating" ? { ...m, status: "aborted" } : m
-              )
-            }
-          : s
-      );
-      return [newSession, ...cleaned];
-    });
-    setCurrentSessionId(newSession.id);
     setMessages([]);
     setInput("");
     setIsGenerating(false);
     setIsAtBottom(true);
-  }, []);
 
-  const loadSession = useCallback(
-    (sessionId) => {
-      streamParser.abort(false);
-
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.isGenerating
-            ? {
-                ...s,
-                isGenerating: false,
-                messages: s.messages.map((m) =>
-                  m.status === "generating" ? { ...m, status: "aborted" } : m
-                )
-              }
-            : s
-        )
+    fetch(`/api/sessions/${currentSessionId}/messages`)
+      .then(r => r.json())
+      .then(rows =>
+        setMessages(rows.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.created_at * 1000).toLocaleString(),
+          status: "completed"
+        })))
       );
+  }, [currentSessionId]);
 
-      const session = sessions.find((item) => item.id === sessionId);
-      if (!session) return;
+  const createNewSession = useCallback(async () => {
+    const res = await fetch('/api/sessions', { method: 'POST' });
+    const session = await res.json();
+    setSessions(prev => [session, ...prev]);
+    navigate(`/chat/${session.id}`);
+  }, [navigate]);
 
-      setCurrentSessionId(sessionId);
-      setMessages(session.messages);
-      setIsGenerating(false);
-      setInput(session.input || "");
-      setIsAtBottom(true);
-    },
-    [sessions]
-  );
+  const loadSession = useCallback((sessionId) => {
+    navigate(`/chat/${sessionId}`);
+  }, [navigate]);
 
-  const deleteSession = useCallback(
-    (sessionId) => {
-      setSessions((prev) => {
-        const updatedSessions = prev.filter((session) => session.id !== sessionId);
+  const deleteSession = useCallback(async (sessionId) => {
+    await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
 
-        if (currentSessionId === sessionId && updatedSessions.length > 0) {
-          setTimeout(() => loadSession(updatedSessions[0].id), 0);
-        }
+    const remaining = sessions.filter(s => s.id !== sessionId);
+    setSessions(remaining);
 
-        return updatedSessions;
-      });
-    },
-    [currentSessionId, loadSession]
-  );
-
-  const updateSessionMessages = useCallback(
-    (newMessages, additionalState = {}) => {
-      setSessions((prev) =>
-        prev.map((session) =>
-          session.id === currentSessionId
-            ? {
-                ...session,
-                messages: newMessages,
-                title:
-                  newMessages.find((message) => message.role === "user")?.content?.slice(0, 20) ||
-                  "New Chat",
-                isGenerating:
-                  additionalState.isGenerating !== undefined
-                    ? additionalState.isGenerating
-                    : session.isGenerating,
-                input: additionalState.input !== undefined ? additionalState.input : session.input
-              }
-            : session
-        )
-      );
-    },
-    [currentSessionId]
-  );
-
-  const setSessionInput = useCallback(
-    (value) => {
-      setSessions((prev) =>
-        prev.map((s) => (s.id === currentSessionId ? { ...s, input: value } : s))
-      );
-    },
-    [currentSessionId]
-  );
-
-  useEffect(() => {
-    if (sessions.length === 0) {
-      createNewSession();
-    }
-  }, [createNewSession, sessions.length]);
-
-  const scrollToBottom = useCallback(
-    (behavior = "auto") => {
-      if (!virtuosoRef.current) return;
-      virtuosoRef.current.scrollToIndex({
-        align: "end",
-        behavior,
-        index: Math.max(messages.length - 1, 0)
-      });
-    },
-    [messages.length]
-  );
-
-  const onSent = useCallback(
-    async (prompt) => {
-      if (isGenerating) return;
-
-      const messageText = prompt !== undefined ? prompt : input;
-      if (!messageText.trim()) return;
-
-      const normalizedText = messageText.trim();
-      const userMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: normalizedText,
-        timestamp: new Date().toLocaleString()
-      };
-
-      const nextMessages = [...messages, userMessage];
-      setMessages(nextMessages);
-      updateSessionMessages(nextMessages, { input: "", isGenerating: true });
-      setInput("");
-      setIsGenerating(true);
-      setIsAtBottom(true);
-
-      const aiMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: "",
-        timestamp: new Date().toLocaleString(),
-        status: "generating"
-      };
-
-      const messagesWithAI = [...nextMessages, aiMessage];
-      setMessages(messagesWithAI);
-      updateSessionMessages(messagesWithAI, { input: "", isGenerating: true });
-
-      streamedContentRef.current = "";
-
-      try {
-        const apiMessages = nextMessages.map((message) => ({
-          role: message.role,
-          content: message.content
-        }));
-
-        await streamParser.fetchStream(
-          apiMessages,
-          (chunk) => {
-            streamedContentRef.current += chunk;
-            const updatedMessages = messagesWithAI.map((msg) =>
-              msg.id === aiMessage.id
-                ? { ...msg, content: streamedContentRef.current }
-                : msg
-            );
-            setMessages(updatedMessages);
-            updateSessionMessages(updatedMessages);
-          },
-          (error) => {
-            console.error("Stream error:", error);
-            const errorMessages = messagesWithAI.map((msg) =>
-              msg.id === aiMessage.id
-                ? { ...msg, status: "failed", content: streamedContentRef.current || "生成失败，请重试" }
-                : msg
-            );
-            setMessages(errorMessages);
-            updateSessionMessages(errorMessages, { isGenerating: false });
-            setIsGenerating(false);
-          },
-          () => {
-            const completedMessages = messagesWithAI.map((msg) =>
-              msg.id === aiMessage.id
-                ? { ...msg, status: "completed", content: streamedContentRef.current }
-                : msg
-            );
-            setMessages(completedMessages);
-            updateSessionMessages(completedMessages, { isGenerating: false });
-            setIsGenerating(false);
-          }
-        );
-      } catch (error) {
-        console.error("Error:", error);
-        const errorMessages = messagesWithAI.map((msg) =>
-          msg.id === aiMessage.id
-            ? { ...msg, status: "failed", content: "生成失败，请重试" }
-            : msg
-        );
-        setMessages(errorMessages);
-        updateSessionMessages(errorMessages, { isGenerating: false });
-        setIsGenerating(false);
+    if (currentSessionId === sessionId) {
+      if (remaining.length > 0) {
+        navigate(`/chat/${remaining[0].id}`);
+      } else {
+        const res = await fetch('/api/sessions', { method: 'POST' });
+        const session = await res.json();
+        setSessions([session]);
+        navigate(`/chat/${session.id}`);
       }
-    },
-    [input, isGenerating, messages, updateSessionMessages]
-  );
+    }
+  }, [currentSessionId, navigate, sessions]);
 
-  const handleVoiceTranscript = useCallback(
-    (transcript) => {
-      setInput(transcript);
-      onSent(transcript);
-    },
-    [onSent]
-  );
+  const scrollToBottom = useCallback((behavior = "auto") => {
+    if (!virtuosoRef.current) return;
+    virtuosoRef.current.scrollToIndex({
+      align: "end",
+      behavior,
+      index: Math.max(messages.length - 1, 0)
+    });
+  }, [messages.length]);
+
+  const onSent = useCallback(async (prompt) => {
+    if (isGenerating) return;
+
+    const messageText = prompt !== undefined ? prompt : input;
+    if (!messageText.trim()) return;
+
+    const normalizedText = messageText.trim();
+    const userMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: normalizedText,
+      timestamp: new Date().toLocaleString(),
+      status: "completed"
+    };
+
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    setInput("");
+    setIsGenerating(true);
+    setIsAtBottom(true);
+
+    // Save user message and update session title
+    fetch(`/api/sessions/${currentSessionId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: normalizedText }] })
+    })
+      .then(r => r.json())
+      .then(updatedSession => {
+        setSessions(prev => prev.map(s => s.id === currentSessionId ? updatedSession : s));
+      });
+
+    const aiMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toLocaleString(),
+      status: "generating"
+    };
+    const messagesWithAI = [...nextMessages, aiMessage];
+    setMessages(messagesWithAI);
+    streamedContentRef.current = "";
+
+    const capturedSessionId = currentSessionId;
+
+    try {
+      const apiMessages = nextMessages.map(m => ({ role: m.role, content: m.content }));
+
+      await streamParser.fetchStream(
+        apiMessages,
+        (chunk) => {
+          streamedContentRef.current += chunk;
+          setMessages(messagesWithAI.map(msg =>
+            msg.id === aiMessage.id
+              ? { ...msg, content: streamedContentRef.current }
+              : msg
+          ));
+        },
+        (error) => {
+          console.error("Stream error:", error);
+          setMessages(messagesWithAI.map(msg =>
+            msg.id === aiMessage.id
+              ? { ...msg, status: "failed", content: streamedContentRef.current || "生成失败，请重试" }
+              : msg
+          ));
+          setIsGenerating(false);
+        },
+        () => {
+          setMessages(messagesWithAI.map(msg =>
+            msg.id === aiMessage.id
+              ? { ...msg, status: "completed", content: streamedContentRef.current }
+              : msg
+          ));
+          setIsGenerating(false);
+
+          // Save assistant message
+          fetch(`/api/sessions/${capturedSessionId}/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: [{ role: "assistant", content: streamedContentRef.current }] })
+          });
+        }
+      );
+    } catch (error) {
+      console.error("Error:", error);
+      setMessages(messagesWithAI.map(msg =>
+        msg.id === aiMessage.id
+          ? { ...msg, status: "failed", content: "生成失败，请重试" }
+          : msg
+      ));
+      setIsGenerating(false);
+    }
+  }, [input, isGenerating, messages, currentSessionId]);
+
+  const handleVoiceTranscript = useCallback((transcript) => {
+    setInput(transcript);
+    onSent(transcript);
+  }, [onSent]);
 
   const {
     error: voiceError,
@@ -256,72 +217,62 @@ const ContextProvider = (props) => {
   const abortGeneration = useCallback(() => {
     streamParser.abort();
     setIsGenerating(false);
-    const updatedMessages = messages.map((message) =>
-      message.status === "generating" ? { ...message, status: "aborted" } : message
+    setMessages(prev =>
+      prev.map(msg => msg.status === "generating" ? { ...msg, status: "aborted" } : msg)
     );
-    setMessages(updatedMessages);
-    updateSessionMessages(updatedMessages, { isGenerating: false });
-  }, [messages, updateSessionMessages]);
+  }, []);
 
-  const handleKeyPress = useCallback(
-    (event) => {
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        onSent();
-      }
-    },
-    [onSent]
-  );
+  const handleKeyPress = useCallback((event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      onSent();
+    }
+  }, [onSent]);
 
-  const contextValue = useMemo(
-    () => ({
-      abortGeneration,
-      createNewSession,
-      currentSessionId,
-      deleteSession,
-      handleKeyPress,
-      input,
-      isAtBottom,
-      isGenerating,
-      isVoiceSupported,
-      loadSession,
-      messages,
-      onSent,
-      scrollToBottom,
-      sessions,
-      setInput,
-      setIsAtBottom,
-      setSessionInput,
-      showResult,
-      toggleVoiceInput,
-      virtuosoRef,
-      voiceError,
-      voiceInputStatus,
-      voiceTranscript
-    }),
-    [
-      abortGeneration,
-      createNewSession,
-      currentSessionId,
-      deleteSession,
-      handleKeyPress,
-      input,
-      isAtBottom,
-      isGenerating,
-      isVoiceSupported,
-      loadSession,
-      messages,
-      onSent,
-      scrollToBottom,
-      sessions,
-      setSessionInput,
-      showResult,
-      toggleVoiceInput,
-      voiceError,
-      voiceInputStatus,
-      voiceTranscript
-    ]
-  );
+  const contextValue = useMemo(() => ({
+    abortGeneration,
+    createNewSession,
+    currentSessionId,
+    deleteSession,
+    handleKeyPress,
+    input,
+    isAtBottom,
+    isGenerating,
+    isVoiceSupported,
+    loadSession,
+    messages,
+    onSent,
+    scrollToBottom,
+    sessions,
+    setInput,
+    setIsAtBottom,
+    showResult,
+    toggleVoiceInput,
+    virtuosoRef,
+    voiceError,
+    voiceInputStatus,
+    voiceTranscript
+  }), [
+    abortGeneration,
+    createNewSession,
+    currentSessionId,
+    deleteSession,
+    handleKeyPress,
+    input,
+    isAtBottom,
+    isGenerating,
+    isVoiceSupported,
+    loadSession,
+    messages,
+    onSent,
+    scrollToBottom,
+    sessions,
+    showResult,
+    toggleVoiceInput,
+    voiceError,
+    voiceInputStatus,
+    voiceTranscript
+  ]);
 
   return <Context.Provider value={contextValue}>{props.children}</Context.Provider>;
 };

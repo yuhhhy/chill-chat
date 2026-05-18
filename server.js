@@ -1,63 +1,139 @@
 import http from 'http';
 import https from 'https';
 import dotenv from 'dotenv';
+import Database from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 
 dotenv.config();
 
 const API_KEY = process.env.DEEPSEEK_API_KEY;
 const PORT = process.env.PORT || 3001;
 
-const server = http.createServer((req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 200;
-    res.end();
-    return;
-  }
-  
-  if (req.method === 'POST' && req.url === '/api/chat') {
+// --- Database ---
+
+const db = new Database('./chat.db');
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'New Chat',
+    created_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+  CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  );
+`);
+
+const stmt = {
+  listSessions:  db.prepare('SELECT * FROM sessions ORDER BY created_at DESC'),
+  getSession:    db.prepare('SELECT * FROM sessions WHERE id = ?'),
+  createSession: db.prepare('INSERT INTO sessions (id) VALUES (?)'),
+  deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
+  updateTitle:   db.prepare('UPDATE sessions SET title = ? WHERE id = ?'),
+  listMessages:  db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC'),
+  insertMessage: db.prepare('INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)'),
+  countMessages: db.prepare('SELECT COUNT(*) as count FROM messages WHERE session_id = ?'),
+};
+
+// --- Helpers ---
+
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
     let body = '';
-    
-    req.on('data', (chunk) => {
-      body += chunk;
-    });
-    
+    req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
-      try {
-        const requestData = JSON.parse(body);
-        const { messages } = requestData;
-        
-        console.log('收到请求:', messages);
-        handleStreamRequest(messages, res);
-      } catch (error) {
-        console.error('解析请求体错误:', error);
-        res.statusCode = 400;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: '请求格式错误' }));
+      try { resolve(JSON.parse(body)); }
+      catch { reject(new Error('Invalid JSON')); }
+    });
+  });
+}
+
+function json(res, data, status = 200) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(data));
+}
+
+// --- Session handlers ---
+
+function getSessions(req, res) {
+  json(res, stmt.listSessions.all());
+}
+
+function createSession(req, res) {
+  const id = randomUUID();
+  stmt.createSession.run(id);
+  json(res, stmt.getSession.get(id), 201);
+}
+
+function deleteSession(req, res, sessionId) {
+  stmt.deleteSession.run(sessionId);
+  json(res, { ok: true });
+}
+
+function getMessages(req, res, sessionId) {
+  json(res, stmt.listMessages.all(sessionId));
+}
+
+async function addMessages(req, res, sessionId) {
+  try {
+    const { messages } = await parseBody(req);
+
+    const isFirstBatch = stmt.countMessages.get(sessionId).count === 0;
+
+    const insertAll = db.transaction((msgs) => {
+      for (const msg of msgs) {
+        stmt.insertMessage.run(randomUUID(), sessionId, msg.role, msg.content);
       }
     });
-  } else if (req.method === 'GET' && req.url === '/health') {
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ status: 'ok', message: 'AI Chat API is running' }));
-  } else {
-    res.statusCode = 404;
-    res.end();
-  }
-});
+    insertAll(messages);
 
-function handleStreamRequest(messages, res) {
+    if (isFirstBatch) {
+      const firstUser = messages.find(m => m.role === 'user');
+      if (firstUser) {
+        stmt.updateTitle.run(firstUser.content.slice(0, 20), sessionId);
+      }
+    }
+
+    json(res, stmt.getSession.get(sessionId));
+  } catch (err) {
+    json(res, { error: err.message }, 400);
+  }
+}
+
+// --- Streaming handler ---
+
+async function handleChatStream(req, res) {
+  let body = '';
+  req.on('data', chunk => { body += chunk; });
+  req.on('end', () => {
+    try {
+      const { messages } = JSON.parse(body);
+      streamToDeepSeek(messages, res);
+    } catch {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: '请求格式错误' }));
+    }
+  });
+}
+
+function streamToDeepSeek(messages, res) {
   const requestBody = {
     model: 'deepseek-v4-flash',
-    messages: messages,
+    messages,
     max_tokens: 4000,
     temperature: 0.7,
     stream: true
   };
-  
+
   const options = {
     hostname: 'api.deepseek.com',
     port: 443,
@@ -71,47 +147,69 @@ function handleStreamRequest(messages, res) {
       'Accept': '*/*'
     }
   };
-  
-  console.log('发送到MaaS的请求体:', JSON.stringify(requestBody, null, 2));
-  
+
   const maasReq = https.request(options, (maasRes) => {
-    console.log('MaaS API 响应状态码:', maasRes.statusCode);
-    
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
-    
     maasRes.pipe(res);
-    
-    maasRes.on('end', () => {
-      console.log('响应结束');
-    });
   });
-  
+
   maasReq.on('error', (error) => {
-    console.error('请求错误:', error);
-    
-    res.write(`data: {"error": "流式请求失败：${error.message}"} \n\n`);
+    res.write(`data: {"error": "流式请求失败：${error.message}"}\n\n`);
     res.write('data: [DONE]\n\n');
     res.end();
   });
-  
+
   maasReq.on('timeout', () => {
-    console.error('请求超时');
     maasReq.destroy();
-    
-    res.write(`data: {"error": "请求超时"} \n\n`);
+    res.write('data: {"error": "请求超时"}\n\n');
     res.write('data: [DONE]\n\n');
     res.end();
   });
-  
+
   maasReq.write(JSON.stringify(requestBody));
   maasReq.end();
-  
-  console.log('请求已发送');
 }
 
+// --- Router ---
+
+const server = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 200;
+    res.end();
+    return;
+  }
+
+  const path = req.url;
+
+  if (req.method === 'GET'  && path === '/api/sessions') return getSessions(req, res);
+  if (req.method === 'POST' && path === '/api/sessions') return createSession(req, res);
+  if (req.method === 'POST' && path === '/api/chat')     return handleChatStream(req, res);
+  if (req.method === 'GET'  && path === '/health')       return json(res, { status: 'ok' });
+
+  const sessionMatch = path.match(/^\/api\/sessions\/([^/?]+)$/);
+  if (sessionMatch) {
+    const sid = decodeURIComponent(sessionMatch[1]);
+    if (req.method === 'DELETE') return deleteSession(req, res, sid);
+  }
+
+  const messagesMatch = path.match(/^\/api\/sessions\/([^/?]+)\/messages$/);
+  if (messagesMatch) {
+    const sid = decodeURIComponent(messagesMatch[1]);
+    if (req.method === 'GET')  return getMessages(req, res, sid);
+    if (req.method === 'POST') return addMessages(req, res, sid);
+  }
+
+  res.statusCode = 404;
+  res.end();
+});
+
 server.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });

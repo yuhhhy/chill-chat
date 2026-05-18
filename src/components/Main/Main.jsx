@@ -42,7 +42,6 @@ const Main = () => {
     onSent,
     setInput,
     setIsAtBottom,
-    setSessionInput,
     showResult,
     toggleVoiceInput,
     virtuosoRef,
@@ -53,9 +52,7 @@ const Main = () => {
   } = useContext(Context);
 
   const handleInputChange = (event) => {
-    const value = event.target.value;
-    setInput(value);
-    setSessionInput(value);
+    setInput(event.target.value);
   };
 
   useEffect(() => {
