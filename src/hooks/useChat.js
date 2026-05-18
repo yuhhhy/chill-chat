@@ -7,12 +7,14 @@ function toViewMessage(m) {
     id: m.id,
     role: m.role,
     content: m.content,
+    modelProvider: m.model_provider || 'deepseek',
+    reasoningContent: m.reasoning_content || '',
     timestamp: new Date(m.created_at * 1000).toLocaleString(),
     status: 'completed'
   };
 }
 
-export function useChat({ currentSessionId, onSessionUpdated }) {
+export function useChat({ currentSessionId, modelProvider = 'deepseek', onSessionUpdated }) {
   const [messages, setMessages] = useState([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -51,8 +53,9 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
   }, [currentSessionId]);
 
   // Core streaming logic — shared by send() and regenerate()
-  const _runStream = useCallback(async (apiMessages, stateWithPlaceholder, aiMessagePlaceholder, capturedSessionId) => {
+  const _runStream = useCallback(async (apiMessages, stateWithPlaceholder, aiMessagePlaceholder, capturedSessionId, provider) => {
     let streamedContent = '';
+    let streamedReasoningContent = '';
 
     generatingSessionsRef.current.add(capturedSessionId);
     sessionMessagesRef.current.set(capturedSessionId, stateWithPlaceholder);
@@ -79,11 +82,20 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
     try {
       await parser.fetchStream(
         apiMessages,
+        provider,
         (chunk) => {
-          streamedContent += chunk;
+          const chunkType = typeof chunk === 'string' ? 'content' : chunk.type;
+          const chunkContent = typeof chunk === 'string' ? chunk : chunk.content;
+
+          if (chunkType === 'reasoning') {
+            streamedReasoningContent += chunkContent;
+          } else {
+            streamedContent += chunkContent;
+          }
+
           syncMessages(stateWithPlaceholder.map(msg =>
             msg.id === aiMessagePlaceholder.id
-              ? { ...msg, content: streamedContent }
+              ? { ...msg, content: streamedContent, reasoningContent: streamedReasoningContent }
               : msg
           ));
         },
@@ -91,7 +103,7 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
           console.error('Stream error:', error);
           const failed = stateWithPlaceholder.map(msg =>
             msg.id === aiMessagePlaceholder.id
-              ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试' }
+              ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试', reasoningContent: streamedReasoningContent }
               : msg
           );
           finishGeneration();
@@ -101,7 +113,7 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
           if (!streamedContent.trim()) {
             const failed = stateWithPlaceholder.map(msg =>
               msg.id === aiMessagePlaceholder.id
-                ? { ...msg, status: 'failed', content: '生成失败，请重试' }
+                ? { ...msg, status: 'failed', content: '生成失败，请重试', reasoningContent: streamedReasoningContent }
                 : msg
             );
             finishGeneration();
@@ -111,17 +123,22 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
 
           const completed = stateWithPlaceholder.map(msg =>
             msg.id === aiMessagePlaceholder.id
-              ? { ...msg, status: 'completed', content: streamedContent }
+              ? { ...msg, status: 'completed', content: streamedContent, reasoningContent: streamedReasoningContent }
               : msg
           );
           finishGeneration();
           syncMessages(completed);
-          saveMessages(capturedSessionId, [{ role: 'assistant', content: streamedContent }]);
+          saveMessages(capturedSessionId, [{
+            role: 'assistant',
+            content: streamedContent,
+            reasoningContent: streamedReasoningContent,
+            modelProvider: provider
+          }]);
         },
         () => {
           const aborted = stateWithPlaceholder.map(msg =>
             msg.id === aiMessagePlaceholder.id
-              ? { ...msg, status: 'aborted', content: streamedContent }
+              ? { ...msg, status: 'aborted', content: streamedContent, reasoningContent: streamedReasoningContent }
               : msg
           );
           finishGeneration();
@@ -132,7 +149,7 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
       console.error('Error:', error);
       const failed = stateWithPlaceholder.map(msg =>
         msg.id === aiMessagePlaceholder.id
-          ? { ...msg, status: 'failed', content: '生成失败，请重试' }
+          ? { ...msg, status: 'failed', content: '生成失败，请重试', reasoningContent: streamedReasoningContent }
           : msg
       );
       finishGeneration();
@@ -160,6 +177,8 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
       id: crypto.randomUUID(),
       role: 'assistant',
       content: '',
+      modelProvider,
+      reasoningContent: '',
       timestamp: new Date().toLocaleString(),
       status: 'generating'
     };
@@ -170,9 +189,10 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
       nextMessages.map(m => ({ role: m.role, content: m.content })),
       messagesWithAI,
       aiMessage,
-      currentSessionId
+      currentSessionId,
+      modelProvider
     );
-  }, [messages, currentSessionId, onSessionUpdated, _runStream]);
+  }, [messages, currentSessionId, modelProvider, onSessionUpdated, _runStream]);
 
   const regenerate = useCallback(async () => {
     if (isGenerating) return;
@@ -192,6 +212,8 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
       id: crypto.randomUUID(),
       role: 'assistant',
       content: '',
+      modelProvider,
+      reasoningContent: '',
       timestamp: new Date().toLocaleString(),
       status: 'generating'
     };
@@ -202,9 +224,10 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
       historyMessages.map(m => ({ role: m.role, content: m.content })),
       withPlaceholder,
       aiPlaceholder,
-      currentSessionId
+      currentSessionId,
+      modelProvider
     );
-  }, [messages, currentSessionId, isGenerating, _runStream]);
+  }, [messages, currentSessionId, isGenerating, modelProvider, _runStream]);
 
   const abortGeneration = useCallback(() => {
     const sid = currentSessionIdRef.current;

@@ -6,9 +6,16 @@ import { useFileAttachment } from "../hooks/useFileAttachment.js";
 
 export const Context = createContext();
 
+const MODEL_PROVIDER_STORAGE_KEY = "chill-chat:model-provider";
+const DEFAULT_MODEL_PROVIDER = "deepseek";
+
 const ContextProvider = ({ children }) => {
   const [input, setInput] = useState("");
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [modelProvider, setModelProviderState] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_MODEL_PROVIDER;
+    return window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY) || DEFAULT_MODEL_PROVIDER;
+  });
   const virtuosoRef = useRef(null);
   const inputDraftsRef = useRef(new Map()); // sessionId -> draft text
   const prevSessionIdRef = useRef(null);
@@ -20,6 +27,7 @@ const ContextProvider = ({ children }) => {
 
   const { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate } = useChat({
     currentSessionId,
+    modelProvider,
     onSessionUpdated: updateSession
   });
 
@@ -44,6 +52,13 @@ const ContextProvider = ({ children }) => {
       index: Math.max(messages.length - 1, 0)
     });
   }, [messages.length]);
+
+  const setModelProvider = useCallback((provider) => {
+    setModelProviderState(provider);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(MODEL_PROVIDER_STORAGE_KEY, provider);
+    }
+  }, []);
 
   const onSent = useCallback(async (prompt) => {
     if (isGenerating) return;
@@ -84,6 +99,7 @@ const ContextProvider = ({ children }) => {
     isVoiceSupported,
     loadSession,
     messages,
+    modelProvider,
     onSent,
     openFilePicker,
     regenerate,
@@ -92,6 +108,7 @@ const ContextProvider = ({ children }) => {
     sessions,
     setInput,
     setIsAtBottom,
+    setModelProvider,
     toggleVoiceInput,
     virtuosoRef,
     voiceError,
@@ -112,12 +129,14 @@ const ContextProvider = ({ children }) => {
     isVoiceSupported,
     loadSession,
     messages,
+    modelProvider,
     onSent,
     openFilePicker,
     regenerate,
     removeFile,
     scrollToBottom,
     sessions,
+    setModelProvider,
     toggleVoiceInput,
     voiceError,
     voiceInputStatus,

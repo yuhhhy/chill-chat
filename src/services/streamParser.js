@@ -1,7 +1,7 @@
 class StreamParser {
   constructor() {
     this.sseBuffer = '';
-    this.renderBuffer = '';
+    this.renderQueue = [];
     this.textDecoder = new TextDecoder('utf-8', { stream: true });
     this.abortController = null;
     this.flushInterval = null;
@@ -10,11 +10,11 @@ class StreamParser {
     this.currentOnAbort = null;
   }
 
-  async fetchStream(messages, onChunk, onError, onComplete, onAbort) {
+  async fetchStream(messages, provider, onChunk, onError, onComplete, onAbort) {
     // Abort any previous stream and notify the old caller
     if (this.abortController) {
       this.stopFlush();
-      this.renderBuffer = '';
+      this.renderQueue = [];
       this.currentOnChunk = null;
       const prevOnAbort = this.currentOnAbort;
       this.currentOnAbort = null;
@@ -24,7 +24,7 @@ class StreamParser {
     this.abortController = new AbortController();
     this.currentOnAbort = onAbort ?? null;
     this.sseBuffer = '';
-    this.renderBuffer = '';
+    this.renderQueue = [];
     this.isFlushing = false;
     this.currentOnChunk = onChunk;
     
@@ -34,7 +34,7 @@ class StreamParser {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ messages, provider }),
         signal: this.abortController.signal
       });
 
@@ -85,10 +85,13 @@ class StreamParser {
 
               if (json.choices && json.choices.length > 0) {
                 const delta = json.choices[0].delta;
-                const content = delta?.content || delta?.reasoning_content || '';
 
-                if (content) {
-                  this.addToRenderBuffer(content);
+                if (delta?.reasoning_content) {
+                  this.addToRenderBuffer(delta.reasoning_content, 'reasoning');
+                }
+
+                if (delta?.content) {
+                  this.addToRenderBuffer(delta.content, 'content');
                 }
               }
             } catch (jsonError) {
@@ -109,8 +112,8 @@ class StreamParser {
     }
   }
 
-  addToRenderBuffer(content) {
-    this.renderBuffer += content;
+  addToRenderBuffer(content, type = 'content') {
+    this.renderQueue.push({ type, content });
     
     if (!this.isFlushing) {
       this.startFlush();
@@ -133,28 +136,33 @@ class StreamParser {
   }
 
   flushChunk() {
-    if (this.renderBuffer.length === 0) {
+    if (this.renderQueue.length === 0) {
       return;
     }
 
-    const chunkSize = Math.min(8, this.renderBuffer.length);
-    const chunk = this.renderBuffer.substring(0, chunkSize);
-    this.renderBuffer = this.renderBuffer.substring(chunkSize);
+    const current = this.renderQueue[0];
+    const chunkSize = Math.min(8, current.content.length);
+    const chunk = current.content.substring(0, chunkSize);
+    current.content = current.content.substring(chunkSize);
+
+    if (current.content.length === 0) {
+      this.renderQueue.shift();
+    }
 
     if (this.currentOnChunk) {
-      this.currentOnChunk(chunk);
+      this.currentOnChunk({ type: current.type, content: chunk });
     }
   }
 
   flushAll() {
-    while (this.renderBuffer.length > 0) {
+    while (this.renderQueue.length > 0) {
       this.flushChunk();
     }
   }
 
   abort(flush = true) {
     if (!flush) {
-      this.renderBuffer = '';
+      this.renderQueue = [];
       this.currentOnChunk = null;
     }
     this.currentOnAbort = null;
@@ -167,7 +175,7 @@ class StreamParser {
   reset() {
     this.stopFlush();
     this.sseBuffer = '';
-    this.renderBuffer = '';
+    this.renderQueue = [];
     this.textDecoder = new TextDecoder('utf-8', { stream: true });
     this.abortController = null;
     this.isFlushing = false;
