@@ -136,7 +136,11 @@ class StreamParser {
     }
   }
 
-  abort() {
+  abort(flush = true) {
+    if (!flush) {
+      this.renderBuffer = '';
+      this.currentOnChunk = null;
+    }
     this.stopFlush();
     if (this.abortController) {
       this.abortController.abort();

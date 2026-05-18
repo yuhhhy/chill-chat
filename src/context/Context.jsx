@@ -18,6 +18,8 @@ const ContextProvider = (props) => {
   const showResult = messages.length > 0;
 
   const createNewSession = useCallback(() => {
+    streamParser.abort(false);
+
     const newSession = {
       id: Date.now(),
       title: "New Chat",
@@ -27,7 +29,20 @@ const ContextProvider = (props) => {
       input: ""
     };
 
-    setSessions((prev) => [newSession, ...prev]);
+    setSessions((prev) => {
+      const cleaned = prev.map((s) =>
+        s.isGenerating
+          ? {
+              ...s,
+              isGenerating: false,
+              messages: s.messages.map((m) =>
+                m.status === "generating" ? { ...m, status: "aborted" } : m
+              )
+            }
+          : s
+      );
+      return [newSession, ...cleaned];
+    });
     setCurrentSessionId(newSession.id);
     setMessages([]);
     setInput("");
@@ -37,12 +52,28 @@ const ContextProvider = (props) => {
 
   const loadSession = useCallback(
     (sessionId) => {
+      streamParser.abort(false);
+
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.isGenerating
+            ? {
+                ...s,
+                isGenerating: false,
+                messages: s.messages.map((m) =>
+                  m.status === "generating" ? { ...m, status: "aborted" } : m
+                )
+              }
+            : s
+        )
+      );
+
       const session = sessions.find((item) => item.id === sessionId);
       if (!session) return;
 
       setCurrentSessionId(sessionId);
       setMessages(session.messages);
-      setIsGenerating(session.isGenerating || false);
+      setIsGenerating(false);
       setInput(session.input || "");
       setIsAtBottom(true);
     },
