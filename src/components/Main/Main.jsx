@@ -143,13 +143,19 @@ const Main = () => {
                 <img src={assets.mic_icon} alt="麦克风图标" className="mic-button-icon" />
               </button>
               {isGenerating ? (
-                <img
-                  src={assets.send_icon}
-                  alt=""
+                <svg
                   onClick={abortGeneration}
                   className="stop-icon"
                   title="停止生成"
-                />
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  height="24"
+                  style={{ cursor: 'pointer', flexShrink: 0 }}
+                >
+                  <circle cx="12" cy="12" r="11" fill="none" stroke="#555" strokeWidth="1.8" />
+                  <rect x="8" y="8" width="8" height="8" rx="1.5" fill="#555" />
+                </svg>
               ) : input ? (
                 <img onClick={() => onSent()} src={assets.send_icon} alt="" />
               ) : null}
