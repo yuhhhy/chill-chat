@@ -146,6 +146,45 @@
     color: #4b90ff;
 }
 
+.action-slot {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.action-slot-item {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.slot-visible {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+.slot-hidden {
+    opacity: 0;
+    transform: scale(0.6);
+    pointer-events: none;
+}
+
+.send-button {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+}
+
+.send-button:hover:not(:disabled) {
+    background-color: transparent;
+    transform: scale(1.08);
+}
+
 .attachment-preview {
     display: flex;
     flex-wrap: wrap;
