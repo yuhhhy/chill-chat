@@ -9,6 +9,8 @@ const ContextProvider = ({ children }) => {
   const [input, setInput] = useState("");
   const [isAtBottom, setIsAtBottom] = useState(true);
   const virtuosoRef = useRef(null);
+  const inputDraftsRef = useRef(new Map()); // sessionId -> draft text
+  const prevSessionIdRef = useRef(null);
 
   const {
     sessions, currentSessionId,
@@ -20,10 +22,16 @@ const ContextProvider = ({ children }) => {
     onSessionUpdated: updateSession
   });
 
+  // On session switch: save draft for the session we're leaving, restore draft for the new one
   useEffect(() => {
-    setInput("");
+    const prev = prevSessionIdRef.current;
+    prevSessionIdRef.current = currentSessionId;
+    if (prev !== null) {
+      inputDraftsRef.current.set(prev, input);
+    }
+    setInput(inputDraftsRef.current.get(currentSessionId) ?? "");
     setIsAtBottom(true);
-  }, [currentSessionId]);
+  }, [currentSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scrollToBottom = useCallback((behavior = "auto") => {
     if (!virtuosoRef.current) return;
@@ -39,9 +47,10 @@ const ContextProvider = ({ children }) => {
     const text = (prompt !== undefined ? prompt : input).trim();
     if (!text) return;
     setInput("");
+    inputDraftsRef.current.delete(currentSessionId);
     setIsAtBottom(true);
     await send(text);
-  }, [isGenerating, input, send]);
+  }, [isGenerating, input, send, currentSessionId]);
 
   const handleVoiceTranscript = useCallback((transcript) => {
     setInput(transcript);
