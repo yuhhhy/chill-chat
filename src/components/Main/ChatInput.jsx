@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useRef } from "react";
 import { assets } from "../../assets/assets";
 import { Context } from "../../context/Context";
+import { FILE_ACCEPT } from "../../hooks/useFileAttachment";
 
 const PaperclipIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -67,14 +68,19 @@ const ChatInput = () => {
     <div className="main-bottom">
       {attachedFiles.length > 0 && (
         <div className="attachment-preview">
-          {attachedFiles.map((file, index) => (
-            <div key={index} className="attachment-chip">
-              <span className="attachment-chip-name" title={file.name}>{file.name}</span>
+          {attachedFiles.map((entry, index) => (
+            <div key={entry.id} className={`attachment-chip${entry.error ? " attachment-chip-error" : ""}`}>
+              <span className="attachment-chip-name" title={entry.file.name}>{entry.file.name}</span>
+              {entry.loading && <span className="attachment-chip-status">读取中…</span>}
+              {!entry.loading && !entry.error && (
+                <span className="attachment-chip-status">{entry.content.length} 字符</span>
+              )}
+              {entry.error && <span className="attachment-chip-status">读取失败</span>}
               <button
                 type="button"
                 className="attachment-chip-remove"
                 onClick={() => removeFile(index)}
-                aria-label={`移除 ${file.name}`}
+                aria-label={`移除 ${entry.file.name}`}
               >
                 ×
               </button>
@@ -87,6 +93,7 @@ const ChatInput = () => {
           type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
+          accept={FILE_ACCEPT}
           multiple
           style={{ display: "none" }}
         />
@@ -123,7 +130,7 @@ const ChatInput = () => {
                 <rect x="8.5" y="8.5" width="7" height="7" rx="1.5" fill="#888" />
               </svg>
             </span>
-            <span className={`action-slot-item ${!isGenerating && input ? "slot-visible" : "slot-hidden"}`}>
+            <span className={`action-slot-item ${!isGenerating && (input || attachedFiles.some(f => !f.loading && !f.error)) ? "slot-visible" : "slot-hidden"}`}>
               <button
                 type="button"
                 className="icon-button send-button"
@@ -136,7 +143,7 @@ const ChatInput = () => {
                 <SendIcon />
               </button>
             </span>
-            <span className={`action-slot-item ${!isGenerating && !input ? "slot-visible" : "slot-hidden"}`}>
+            <span className={`action-slot-item ${!isGenerating && !input && !attachedFiles.some(f => !f.loading && !f.error) ? "slot-visible" : "slot-hidden"}`}>
               <button
                 type="button"
                 onClick={toggleVoiceInput}

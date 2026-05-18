@@ -219,6 +219,18 @@
     max-width: 220px;
 }
 
+.attachment-chip-error {
+    background-color: #fde8e8;
+    color: #c0392b;
+}
+
+.attachment-chip-status {
+    font-size: 11px;
+    opacity: 0.7;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 .attachment-chip-name {
     overflow: hidden;
     text-overflow: ellipsis;

@@ -63,13 +63,20 @@ const ContextProvider = ({ children }) => {
   const onSent = useCallback(async (prompt) => {
     if (isGenerating) return;
     const text = (prompt !== undefined ? prompt : input).trim();
-    if (!text) return;
+    const readyFiles = attachedFiles.filter(f => !f.loading && !f.error && f.content !== null);
+    if (!text && readyFiles.length === 0) return;
+
+    const fileParts = readyFiles
+      .map(f => `\n\n--- ${f.file.name} ---\n${f.content}`)
+      .join("");
+    const fullText = text + fileParts;
+
     setInput("");
     inputDraftsRef.current.delete(currentSessionId);
     clearFiles();
     setIsAtBottom(true);
-    await send(text);
-  }, [isGenerating, input, send, currentSessionId, clearFiles]);
+    await send(fullText);
+  }, [isGenerating, input, attachedFiles, send, currentSessionId, clearFiles]);
 
   const handleVoiceTranscript = useCallback((transcript) => {
     setInput(transcript);
