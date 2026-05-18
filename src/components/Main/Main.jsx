@@ -37,6 +37,7 @@ const Main = () => {
     input,
     isAtBottom,
     isGenerating,
+    isLoadingMessages,
     isVoiceSupported,
     messages,
     onSent,
@@ -70,7 +71,7 @@ const Main = () => {
         <img src={assets.user_icon} alt="" />
       </div>
       <div className="main-container">
-        {!showResult ? (
+        {isLoadingMessages ? null : !showResult ? (
           <>
             <div className="greet">
               <p>
@@ -112,6 +113,7 @@ const Main = () => {
             </div>
           </div>
         )}
+
 
         <div className="main-bottom">
           <div className="search-box">

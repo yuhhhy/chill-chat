@@ -12,6 +12,7 @@ const ContextProvider = (props) => {
   const [input, setInput] = useState("");
   const [sessions, setSessions] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
@@ -52,21 +53,23 @@ const ContextProvider = (props) => {
     if (!currentSessionId) return;
     streamParser.abort(false);
     setMessages([]);
+    setIsLoadingMessages(true);
     setInput("");
     setIsGenerating(false);
     setIsAtBottom(true);
 
     fetch(`/api/sessions/${currentSessionId}/messages`)
       .then(r => r.json())
-      .then(rows =>
+      .then(rows => {
         setMessages(rows.map(m => ({
           id: m.id,
           role: m.role,
           content: m.content,
           timestamp: new Date(m.created_at * 1000).toLocaleString(),
           status: "completed"
-        })))
-      );
+        })));
+        setIsLoadingMessages(false);
+      });
   }, [currentSessionId]);
 
   const createNewSession = useCallback(async () => {
@@ -238,6 +241,7 @@ const ContextProvider = (props) => {
     input,
     isAtBottom,
     isGenerating,
+    isLoadingMessages,
     isVoiceSupported,
     loadSession,
     messages,
@@ -261,6 +265,7 @@ const ContextProvider = (props) => {
     input,
     isAtBottom,
     isGenerating,
+    isLoadingMessages,
     isVoiceSupported,
     loadSession,
     messages,
