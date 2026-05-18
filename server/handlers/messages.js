@@ -17,7 +17,9 @@ export async function addMessages(req, res, { json, parseBody, sessionId }) {
 
     const insertAll = db.transaction((msgs) => {
       for (const msg of msgs) {
-        stmt.insertMessage.run(randomUUID(), sessionId, msg.role, msg.content);
+        const reasoningContent = msg.reasoningContent ?? msg.reasoning_content ?? '';
+        const modelProvider = msg.modelProvider ?? msg.model_provider ?? '';
+        stmt.insertMessage.run(randomUUID(), sessionId, msg.role, msg.content, reasoningContent, modelProvider);
       }
     });
     insertAll(messages);

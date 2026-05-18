@@ -20,6 +20,14 @@ db.exec(`
   );
 `);
 
+const messageColumns = db.prepare('PRAGMA table_info(messages)').all().map(column => column.name);
+if (!messageColumns.includes('reasoning_content')) {
+  db.exec("ALTER TABLE messages ADD COLUMN reasoning_content TEXT NOT NULL DEFAULT ''");
+}
+if (!messageColumns.includes('model_provider')) {
+  db.exec("ALTER TABLE messages ADD COLUMN model_provider TEXT NOT NULL DEFAULT ''");
+}
+
 export const stmt = {
   listSessions:  db.prepare('SELECT * FROM sessions ORDER BY created_at DESC'),
   getSession:    db.prepare('SELECT * FROM sessions WHERE id = ?'),
@@ -27,7 +35,7 @@ export const stmt = {
   deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
   updateTitle:   db.prepare('UPDATE sessions SET title = ? WHERE id = ?'),
   listMessages:  db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC'),
-  insertMessage: db.prepare('INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)'),
+  insertMessage: db.prepare('INSERT INTO messages (id, session_id, role, content, reasoning_content, model_provider) VALUES (?, ?, ?, ?, ?, ?)'),
   countMessages:  db.prepare('SELECT COUNT(*) as count FROM messages WHERE session_id = ?'),
   deleteMessage:  db.prepare('DELETE FROM messages WHERE id = ? AND session_id = ?'),
 };
