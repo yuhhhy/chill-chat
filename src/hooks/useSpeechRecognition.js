@@ -22,7 +22,7 @@ const getSpeechRecognition = () => {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 };
 
-export const useSpeechRecognition = ({ onTranscript }) => {
+export const useSpeechRecognition = ({ onTranscript, sessionId }) => {
   const recognitionRef = useRef(null);
   const statusBeforeEndRef = useRef(VOICE_STATES.IDLE);
   const finalTranscriptRef = useRef("");
@@ -78,6 +78,10 @@ export const useSpeechRecognition = ({ onTranscript }) => {
       start();
     }
   }, [start, status, stop]);
+
+  useEffect(() => {
+    resetState();
+  }, [sessionId, resetState]);
 
   useEffect(() => {
     const SpeechRecognition = getSpeechRecognition();

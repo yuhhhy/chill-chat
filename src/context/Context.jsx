@@ -220,7 +220,7 @@ const ContextProvider = (props) => {
     status: voiceInputStatus,
     toggle: toggleVoiceInput,
     transcript: voiceTranscript
-  } = useSpeechRecognition({ onTranscript: handleVoiceTranscript });
+  } = useSpeechRecognition({ onTranscript: handleVoiceTranscript, sessionId: currentSessionId });
 
   const abortGeneration = useCallback(() => {
     streamParser.abort();
