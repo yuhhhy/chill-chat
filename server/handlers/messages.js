@@ -1,6 +1,11 @@
 import { randomUUID } from 'crypto';
 import db, { stmt } from '../db.js';
 
+export function deleteMessage(req, res, { json, sessionId, messageId }) {
+  stmt.deleteMessage.run(messageId, sessionId);
+  json(res, { ok: true });
+}
+
 export function getMessages(req, res, { json, sessionId }) {
   json(res, stmt.listMessages.all(sessionId));
 }

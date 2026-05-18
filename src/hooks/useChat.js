@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchMessages, saveMessages } from '../api/messages.js';
+import { fetchMessages, saveMessages, deleteMessage as deleteMessageApi } from '../api/messages.js';
 import StreamParser from '../services/streamParser.js';
 
 function toViewMessage(m) {
@@ -20,14 +20,12 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
   const currentSessionIdRef = useRef(currentSessionId);
   const generatingSessionsRef = useRef(new Set());
   const sessionMessagesRef = useRef(new Map());
-  // One StreamParser instance per session — allows true concurrent background generation
   const streamParsersRef = useRef(new Map());
 
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
 
-  // Load (or restore) messages when the active session changes
   useEffect(() => {
     if (!currentSessionId) return;
 
@@ -46,11 +44,90 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
     setIsLoadingMessages(true);
 
     fetchMessages(currentSessionId).then(rows => {
-      if (currentSessionIdRef.current !== currentSessionId) return; // stale response
+      if (currentSessionIdRef.current !== currentSessionId) return;
       setMessages(rows.map(toViewMessage));
       setIsLoadingMessages(false);
     });
   }, [currentSessionId]);
+
+  // Core streaming logic — shared by send() and regenerate()
+  const _runStream = useCallback(async (apiMessages, stateWithPlaceholder, aiMessagePlaceholder, capturedSessionId) => {
+    let streamedContent = '';
+
+    generatingSessionsRef.current.add(capturedSessionId);
+    sessionMessagesRef.current.set(capturedSessionId, stateWithPlaceholder);
+
+    const parser = new StreamParser();
+    streamParsersRef.current.set(capturedSessionId, parser);
+
+    const syncMessages = (updated) => {
+      sessionMessagesRef.current.set(capturedSessionId, updated);
+      if (currentSessionIdRef.current === capturedSessionId) {
+        setMessages(updated);
+      }
+    };
+
+    const finishGeneration = () => {
+      generatingSessionsRef.current.delete(capturedSessionId);
+      sessionMessagesRef.current.delete(capturedSessionId);
+      streamParsersRef.current.delete(capturedSessionId);
+      if (currentSessionIdRef.current === capturedSessionId) {
+        setIsGenerating(false);
+      }
+    };
+
+    try {
+      await parser.fetchStream(
+        apiMessages,
+        (chunk) => {
+          streamedContent += chunk;
+          syncMessages(stateWithPlaceholder.map(msg =>
+            msg.id === aiMessagePlaceholder.id
+              ? { ...msg, content: streamedContent }
+              : msg
+          ));
+        },
+        (error) => {
+          console.error('Stream error:', error);
+          const failed = stateWithPlaceholder.map(msg =>
+            msg.id === aiMessagePlaceholder.id
+              ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试' }
+              : msg
+          );
+          finishGeneration();
+          syncMessages(failed);
+        },
+        () => {
+          const completed = stateWithPlaceholder.map(msg =>
+            msg.id === aiMessagePlaceholder.id
+              ? { ...msg, status: 'completed', content: streamedContent }
+              : msg
+          );
+          finishGeneration();
+          syncMessages(completed);
+          saveMessages(capturedSessionId, [{ role: 'assistant', content: streamedContent }]);
+        },
+        () => {
+          const aborted = stateWithPlaceholder.map(msg =>
+            msg.id === aiMessagePlaceholder.id
+              ? { ...msg, status: 'aborted', content: streamedContent }
+              : msg
+          );
+          finishGeneration();
+          syncMessages(aborted);
+        }
+      );
+    } catch (error) {
+      console.error('Error:', error);
+      const failed = stateWithPlaceholder.map(msg =>
+        msg.id === aiMessagePlaceholder.id
+          ? { ...msg, status: 'failed', content: '生成失败，请重试' }
+          : msg
+      );
+      finishGeneration();
+      syncMessages(failed);
+    }
+  }, []); // refs and setters are stable
 
   const send = useCallback(async (messageText) => {
     const userMessage = {
@@ -78,91 +155,48 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
     const messagesWithAI = [...nextMessages, aiMessage];
     setMessages(messagesWithAI);
 
-    // Per-send accumulator: closure variable, never shared across concurrent sessions
-    let streamedContent = '';
+    await _runStream(
+      nextMessages.map(m => ({ role: m.role, content: m.content })),
+      messagesWithAI,
+      aiMessage,
+      currentSessionId
+    );
+  }, [messages, currentSessionId, onSessionUpdated, _runStream]);
 
-    const capturedSessionId = currentSessionId;
-    generatingSessionsRef.current.add(capturedSessionId);
-    sessionMessagesRef.current.set(capturedSessionId, messagesWithAI);
+  const regenerate = useCallback(async () => {
+    if (isGenerating) return;
+    const lastAiIdx = messages.findLastIndex(m => m.role === 'assistant');
+    if (lastAiIdx === -1) return;
+    const lastAiMsg = messages[lastAiIdx];
+    const historyMessages = messages.slice(0, lastAiIdx);
 
-    // Dedicated parser instance — never interferes with other sessions' streams
-    const parser = new StreamParser();
-    streamParsersRef.current.set(capturedSessionId, parser);
+    setMessages(historyMessages);
+    setIsGenerating(true);
 
-    const syncMessages = (updated) => {
-      sessionMessagesRef.current.set(capturedSessionId, updated);
-      if (currentSessionIdRef.current === capturedSessionId) {
-        setMessages(updated);
-      }
+    deleteMessageApi(currentSessionId, lastAiMsg.id).catch(err =>
+      console.error('Failed to delete message from DB:', err)
+    );
+
+    const aiPlaceholder = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toLocaleString(),
+      status: 'generating'
     };
+    const withPlaceholder = [...historyMessages, aiPlaceholder];
+    setMessages(withPlaceholder);
 
-    const finishGeneration = () => {
-      generatingSessionsRef.current.delete(capturedSessionId);
-      sessionMessagesRef.current.delete(capturedSessionId);
-      streamParsersRef.current.delete(capturedSessionId);
-      if (currentSessionIdRef.current === capturedSessionId) {
-        setIsGenerating(false);
-      }
-    };
-
-    try {
-      const apiMessages = nextMessages.map(m => ({ role: m.role, content: m.content }));
-
-      await parser.fetchStream(
-        apiMessages,
-        (chunk) => {
-          streamedContent += chunk;
-          syncMessages(messagesWithAI.map(msg =>
-            msg.id === aiMessage.id
-              ? { ...msg, content: streamedContent }
-              : msg
-          ));
-        },
-        (error) => {
-          console.error('Stream error:', error);
-          const failed = messagesWithAI.map(msg =>
-            msg.id === aiMessage.id
-              ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试' }
-              : msg
-          );
-          finishGeneration();
-          syncMessages(failed);
-        },
-        () => {
-          const completed = messagesWithAI.map(msg =>
-            msg.id === aiMessage.id
-              ? { ...msg, status: 'completed', content: streamedContent }
-              : msg
-          );
-          finishGeneration();
-          syncMessages(completed);
-          saveMessages(capturedSessionId, [{ role: 'assistant', content: streamedContent }]);
-        },
-        () => {
-          const aborted = messagesWithAI.map(msg =>
-            msg.id === aiMessage.id
-              ? { ...msg, status: 'aborted', content: streamedContent }
-              : msg
-          );
-          finishGeneration();
-          syncMessages(aborted);
-        }
-      );
-    } catch (error) {
-      console.error('Error:', error);
-      const failed = messagesWithAI.map(msg =>
-        msg.id === aiMessage.id
-          ? { ...msg, status: 'failed', content: '生成失败，请重试' }
-          : msg
-      );
-      finishGeneration();
-      syncMessages(failed);
-    }
-  }, [messages, currentSessionId, onSessionUpdated]);
+    await _runStream(
+      historyMessages.map(m => ({ role: m.role, content: m.content })),
+      withPlaceholder,
+      aiPlaceholder,
+      currentSessionId
+    );
+  }, [messages, currentSessionId, isGenerating, _runStream]);
 
   const abortGeneration = useCallback(() => {
     const sid = currentSessionIdRef.current;
-    // Abort only the current session's parser — other sessions keep generating
     const parser = streamParsersRef.current.get(sid);
     if (parser) {
       parser.abort();
@@ -176,5 +210,5 @@ export function useChat({ currentSessionId, onSessionUpdated }) {
     );
   }, []);
 
-  return { messages, isLoadingMessages, isGenerating, send, abortGeneration };
+  return { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate };
 }
