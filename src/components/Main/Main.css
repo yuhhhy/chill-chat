@@ -384,6 +384,7 @@
 
 .message-content .markdown-content {
     line-height: 1.6;
+    max-width: 920px;
 }
 
 .reasoning-panel {
@@ -421,7 +422,7 @@
 
 .reasoning-content {
     margin-top: 8px;
-    max-width: 760px;
+    max-width: 920px;
     color: #7a8494;
     font-size: 14px;
     line-height: 1.6;
