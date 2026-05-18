@@ -8,7 +8,7 @@ const DEFAULT_WIDTH = 260;
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 420;
 
-const SideBar = () => {
+const SideBar = ({ onOpenSettings }) => {
     const [extended, setExtended] = useState(true);
     const [width, setWidth] = useState(DEFAULT_WIDTH);
     const [isDragging, setIsDragging] = useState(false);
@@ -77,7 +77,7 @@ const SideBar = () => {
                     <img src={assets.history_icon} alt="" />
                     <p className="label">Activity</p>
                 </div>
-                <div className="bottom-item recent-entry">
+                <div className="bottom-item recent-entry" onClick={onOpenSettings}>
                     <img src={assets.setting_icon} alt="" />
                     <p className="label">Setting</p>
                 </div>
