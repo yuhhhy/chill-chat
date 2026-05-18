@@ -5,16 +5,18 @@ import { Context } from "../../context/Context";
 import MarkdownRenderer from "../MarkdownRenderer/MarkdownRenderer";
 
 const CopyIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
   </svg>
 );
 
 const RegenerateIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="1 4 1 10 7 10" />
-    <path d="M3.51 15a9 9 0 1 0 .49-3.51" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 11a8 8 0 0 0-14.1-5.1" />
+    <path d="M6 3v4h4" />
+    <path d="M4 13a8 8 0 0 0 14.1 5.1" />
+    <path d="M18 21v-4h-4" />
   </svg>
 );
 
@@ -60,14 +62,23 @@ const MessageRow = ({ message, isLastAI }) => {
         {message.status === "failed"  && <p className="message-status failed">生成失败，请重试</p>}
         {message.status !== "generating" && (
           <div className="action-bar">
-            <button onClick={handleCopy} title="复制">
+            <button
+              type="button"
+              onClick={handleCopy}
+              title={copied ? "已复制" : "复制"}
+              aria-label={copied ? "已复制" : "复制"}
+            >
               <CopyIcon />
-              {copied ? "已复制" : "复制"}
             </button>
             {isLastAI && (
-              <button onClick={regenerate} disabled={isGenerating} title="重新生成">
+              <button
+                type="button"
+                onClick={regenerate}
+                disabled={isGenerating}
+                title="重新生成"
+                aria-label="重新生成"
+              >
                 <RegenerateIcon />
-                重新生成
               </button>
             )}
           </div>
