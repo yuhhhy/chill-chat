@@ -176,6 +176,8 @@ function streamOpenAiCompatible(messages, res, config) {
     upstream.destroy();
     writeSseError(res, '请求超时');
   });
+
+  return upstream;
 }
 
 function streamGemini(messages, res, config) {
@@ -239,6 +241,8 @@ function streamGemini(messages, res, config) {
     upstream.destroy();
     writeSseError(res, '请求超时');
   });
+
+  return upstream;
 }
 
 function streamClaude(messages, res, config) {
@@ -300,6 +304,8 @@ function streamClaude(messages, res, config) {
     upstream.destroy();
     writeSseError(res, '请求超时');
   });
+
+  return upstream;
 }
 
 export function getModelNames() {
@@ -309,6 +315,28 @@ export function getModelNames() {
 }
 
 export function streamChat(messages, res, provider) {
+  if (provider === '__mock_stream__' && process.env.ENABLE_MOCK_PROVIDER === '1') {
+    writeSseHeaders(res);
+    const chunks = ['mock ', 'stream ', 'chunk ', 'reconnect ', 'ok'];
+    let index = 0;
+    const timer = setInterval(() => {
+      if (index >= chunks.length) {
+        clearInterval(timer);
+        writeOpenAiDone(res);
+        return;
+      }
+      writeOpenAiChunk(res, chunks[index]);
+      index += 1;
+    }, 40);
+
+    return {
+      destroy() {
+        clearInterval(timer);
+        writeSseError(res, 'mock stream cancelled');
+      }
+    };
+  }
+
   const resolvedProvider = resolveProvider(provider);
   const config = getRuntimeConfig(resolvedProvider);
 
@@ -324,21 +352,18 @@ export function streamChat(messages, res, provider) {
 
   try {
     if (config.apiType === 'openai' || config.apiType === 'openai-compatible') {
-      streamOpenAiCompatible(messages, res, config);
-      return;
+      return streamOpenAiCompatible(messages, res, config);
     }
 
     if (config.type === 'gemini') {
-      streamGemini(messages, res, config);
-      return;
+      return streamGemini(messages, res, config);
     }
 
     if (config.type === 'claude') {
-      streamClaude(messages, res, config);
-      return;
+      return streamClaude(messages, res, config);
     }
 
-    streamOpenAiCompatible(messages, res, config);
+    return streamOpenAiCompatible(messages, res, config);
   } catch (error) {
     writeSseError(res, `${config.label} 配置错误：${error.message}`);
   }

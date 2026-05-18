@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchMessages, saveMessages, deleteMessage as deleteMessageApi } from '../api/messages.js';
+import { createChatRun, cancelChatRun } from '../api/chatRuns.js';
 import StreamParser from '../services/streamParser.js';
 
 function toViewMessage(m) {
@@ -10,7 +11,7 @@ function toViewMessage(m) {
     modelProvider: m.model_provider || 'deepseek',
     reasoningContent: m.reasoning_content || '',
     timestamp: new Date(m.created_at * 1000).toLocaleString(),
-    status: 'completed'
+    status: m.status || 'completed'
   };
 }
 
@@ -40,6 +41,22 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
   const generatingSessionsRef = useRef(new Set());
   const sessionMessagesRef = useRef(new Map());
   const streamParsersRef = useRef(new Map());
+
+  const persistPartialAssistant = useCallback((parser, sessionId, message, status = 'aborted') => {
+    if (!message || parser?.assistantPersisted) return;
+    if (!message.content?.trim() && !message.reasoningContent?.trim()) return;
+
+    if (parser) parser.assistantPersisted = true;
+    saveMessages(sessionId, [{
+      role: 'assistant',
+      content: message.content || '',
+      reasoningContent: message.reasoningContent || '',
+      modelProvider: message.modelProvider || modelProvider,
+      status
+    }]).catch(err =>
+      console.error('Failed to save partial assistant message:', err)
+    );
+  }, [modelProvider]);
 
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
@@ -80,7 +97,11 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
     const parser = new StreamParser();
     streamParsersRef.current.set(capturedSessionId, parser);
 
-    const syncMessages = (updated) => {
+    const syncMessages = (updatedOrUpdater) => {
+      const previous = sessionMessagesRef.current.get(capturedSessionId) || stateWithPlaceholder;
+      const updated = typeof updatedOrUpdater === 'function'
+        ? updatedOrUpdater(previous)
+        : updatedOrUpdater;
       sessionMessagesRef.current.set(capturedSessionId, updated);
       if (currentSessionIdRef.current === capturedSessionId) {
         setMessages(updated);
@@ -97,9 +118,11 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
     };
 
     try {
-      await parser.fetchStream(
-        apiMessages,
-        provider,
+      const { runId } = await createChatRun(apiMessages, provider);
+      parser.runId = runId;
+
+      await parser.fetchRunEvents(
+        runId,
         (chunk) => {
           const chunkType = typeof chunk === 'string' ? 'content' : chunk.type;
           const chunkContent = typeof chunk === 'string' ? chunk : chunk.content;
@@ -110,7 +133,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
             streamedContent += chunkContent;
           }
 
-          syncMessages(stateWithPlaceholder.map(msg =>
+          syncMessages(prev => prev.map(msg =>
             msg.id === aiMessagePlaceholder.id
               ? { ...msg, content: streamedContent, reasoningContent: streamedReasoningContent }
               : msg
@@ -145,11 +168,13 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
           );
           finishGeneration();
           syncMessages(completed);
+          parser.assistantPersisted = true;
           saveMessages(capturedSessionId, [{
             role: 'assistant',
             content: streamedContent,
             reasoningContent: streamedReasoningContent,
-            modelProvider: provider
+            modelProvider: provider,
+            status: 'completed'
           }]);
         },
         () => {
@@ -160,6 +185,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
           );
           finishGeneration();
           syncMessages(aborted);
+          persistPartialAssistant(parser, capturedSessionId, aborted.find(msg => msg.id === aiMessagePlaceholder.id), 'aborted');
         }
       );
     } catch (error) {
@@ -172,7 +198,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
       finishGeneration();
       syncMessages(failed);
     }
-  }, []); // refs and setters are stable
+  }, [persistPartialAssistant]); // refs and setters are stable
 
   const send = useCallback(async (messageText) => {
     const userMessage = {
@@ -250,7 +276,15 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
     const sid = currentSessionIdRef.current;
     const parser = streamParsersRef.current.get(sid);
     if (parser) {
+      if (parser.runId) {
+        cancelChatRun(parser.runId).catch(err =>
+          console.error('Failed to cancel chat run:', err)
+        );
+      }
       parser.abort();
+      const flushedMessages = sessionMessagesRef.current.get(sid);
+      const partialAssistant = flushedMessages?.findLast(msg => msg.role === 'assistant' && msg.status === 'generating');
+      persistPartialAssistant(parser, sid, partialAssistant, 'aborted');
       streamParsersRef.current.delete(sid);
     }
     generatingSessionsRef.current.delete(sid);

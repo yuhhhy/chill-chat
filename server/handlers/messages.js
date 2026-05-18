@@ -19,7 +19,8 @@ export async function addMessages(req, res, { json, parseBody, sessionId }) {
       for (const msg of msgs) {
         const reasoningContent = msg.reasoningContent ?? msg.reasoning_content ?? '';
         const modelProvider = msg.modelProvider ?? msg.model_provider ?? '';
-        stmt.insertMessage.run(randomUUID(), sessionId, msg.role, msg.content, reasoningContent, modelProvider);
+        const status = msg.status ?? 'completed';
+        stmt.insertMessage.run(randomUUID(), sessionId, msg.role, msg.content, reasoningContent, modelProvider, status);
       }
     });
     insertAll(messages);

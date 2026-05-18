@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { getSessions, createSession, deleteSession } from './handlers/sessions.js';
 import { getMessages, addMessages, deleteMessage } from './handlers/messages.js';
 import { handleChatStream } from './handlers/chat.js';
+import { createChatRun, subscribeChatRun, cancelChatRun } from './handlers/chatRuns.js';
 import { getModelNames } from './providers/modelProviders.js';
 
 dotenv.config();
@@ -43,8 +44,21 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET'  && path === '/api/sessions') return getSessions(req, res, ctx);
   if (req.method === 'POST' && path === '/api/sessions') return createSession(req, res, ctx);
   if (req.method === 'POST' && path === '/api/chat')     return handleChatStream(req, res, ctx);
+  if (req.method === 'POST' && path === '/api/chat-runs') return createChatRun(req, res, ctx);
   if (req.method === 'GET'  && path === '/health')            return json(res, { status: 'ok' });
   if (req.method === 'GET'  && path === '/api/config/models') return json(res, getModelNames());
+
+  const chatRunEventsMatch = path.match(/^\/api\/chat-runs\/([^/?]+)\/events(?:\?.*)?$/);
+  if (chatRunEventsMatch) {
+    const runId = decodeURIComponent(chatRunEventsMatch[1]);
+    if (req.method === 'GET') return subscribeChatRun(req, res, { ...ctx, runId });
+  }
+
+  const chatRunCancelMatch = path.match(/^\/api\/chat-runs\/([^/?]+)\/cancel$/);
+  if (chatRunCancelMatch) {
+    const runId = decodeURIComponent(chatRunCancelMatch[1]);
+    if (req.method === 'POST') return cancelChatRun(req, res, { ...ctx, runId });
+  }
 
   const sessionMatch = path.match(/^\/api\/sessions\/([^/?]+)$/);
   if (sessionMatch) {
