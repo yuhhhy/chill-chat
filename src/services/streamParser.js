@@ -49,6 +49,7 @@ class StreamParser {
         
         if (done) {
           this.flushAll();
+          this.currentOnAbort = null;
           onComplete();
           this.stopFlush();
           break;
@@ -66,6 +67,7 @@ class StreamParser {
             
             if (data === '[DONE]') {
               this.flushAll();
+              this.currentOnAbort = null;
               onComplete();
               this.stopFlush();
               return;
@@ -73,8 +75,9 @@ class StreamParser {
 
             try {
               const json = JSON.parse(data);
-              
+
               if (json.error) {
+                this.currentOnAbort = null;
                 this.stopFlush();
                 onError(new Error(json.error));
                 return;
@@ -99,6 +102,7 @@ class StreamParser {
         console.log('Stream aborted');
         this.flushAll();
       } else {
+        this.currentOnAbort = null;
         this.stopFlush();
         onError(error);
       }

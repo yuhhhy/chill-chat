@@ -31,6 +31,7 @@ export const useSpeechRecognition = ({ onTranscript, sessionId }) => {
   const [status, setStatus] = useState(VOICE_STATES.IDLE);
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState("");
+  const errorTimerRef = useRef(null);
 
   const isSupported = useMemo(() => Boolean(getSpeechRecognition()), []);
 
@@ -82,6 +83,13 @@ export const useSpeechRecognition = ({ onTranscript, sessionId }) => {
   useEffect(() => {
     resetState();
   }, [sessionId, resetState]);
+
+  useEffect(() => {
+    if (!error) return;
+    clearTimeout(errorTimerRef.current);
+    errorTimerRef.current = setTimeout(() => setError(""), 3000);
+    return () => clearTimeout(errorTimerRef.current);
+  }, [error]);
 
   useEffect(() => {
     const SpeechRecognition = getSpeechRecognition();
