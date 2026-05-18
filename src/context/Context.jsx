@@ -54,18 +54,14 @@ const ContextProvider = (props) => {
       setSessions((prev) => {
         const updatedSessions = prev.filter((session) => session.id !== sessionId);
 
-        if (currentSessionId === sessionId) {
-          if (updatedSessions.length > 0) {
-            setTimeout(() => loadSession(updatedSessions[0].id), 0);
-          } else {
-            setTimeout(() => createNewSession(), 0);
-          }
+        if (currentSessionId === sessionId && updatedSessions.length > 0) {
+          setTimeout(() => loadSession(updatedSessions[0].id), 0);
         }
 
         return updatedSessions;
       });
     },
-    [createNewSession, currentSessionId, loadSession]
+    [currentSessionId, loadSession]
   );
 
   const updateSessionMessages = useCallback(
