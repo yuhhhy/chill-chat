@@ -11,7 +11,7 @@
 | 层级 | 技术 |
 |------|------|
 | 前端框架 | React 18 + Vite |
-| 状态管理 | React Context API |
+| 状态管理 | React Context API + 自定义 Hooks |
 | 路由 | react-router-dom v6 |
 | 虚拟列表 | react-virtuoso |
 | Markdown 渲染 | react-markdown + rehype-highlight + remark-gfm |
@@ -22,14 +22,59 @@
 
 ---
 
-## 1. 流式输出架构
+## 整体架构
 
-### 三层分离设计
+### 后端分层
 
 ```
-streamParser.js          — 网络层：ReadableStream 解析、SSE 拆包
-Context.jsx (onSent)     — 状态层：消息生命周期管理、流式内容累积
-Main.jsx + Virtuoso      — 渲染层：按需渲染，增量展示
+server/
+├── index.js              HTTP 服务入口 + 路由分发
+├── db.js                 SQLite 单例 + 所有 prepared statements
+├── providers/
+│   └── deepseek.js       DeepSeek 流式适配器（可替换为其他 AI 提供商）
+└── handlers/
+    ├── sessions.js       会话 CRUD 处理器
+    ├── messages.js       消息读写处理器
+    └── chat.js           流式聊天处理器（调用 provider）
+```
+
+> 新增 AI 提供商：在 `server/providers/` 添加文件，在 `server/handlers/chat.js` 引入即可。
+
+### 前端分层
+
+```
+src/
+├── api/                  HTTP 封装层（所有 fetch 在此集中）
+│   ├── client.js         apiGet / apiPost / apiDelete 基础封装
+│   ├── sessions.js       会话相关 API 函数
+│   └── messages.js       消息相关 API 函数
+├── hooks/                业务逻辑层
+│   ├── useSessions.js    会话 CRUD + 路由导航状态
+│   ├── useChat.js        消息加载 + SSE 流式生成状态
+│   └── useSpeechRecognition.js  语音输入三态状态机
+├── context/
+│   └── Context.jsx       组合层：串联各 hook，对外暴露统一 contextValue
+└── components/
+    ├── Main/
+    │   ├── Main.jsx          布局骨架（约 37 行）
+    │   ├── WelcomeScreen.jsx 初始欢迎界面 + 建议卡片
+    │   ├── MessageList.jsx   Virtuoso 虚拟消息列表
+    │   └── ChatInput.jsx     输入框 + 语音 + 发送/停止
+    ├── SideBar/          会话列表（可拖拽宽度调节）
+    └── MarkdownRenderer/ 代码高亮 Markdown 渲染
+```
+
+---
+
+## 1. 流式输出架构
+
+### 四层分离设计
+
+```
+server/providers/deepseek.js   — 网络层：代理 SSE 到客户端
+services/streamParser.js       — 解析层：SSE 拆包、renderBuffer 节流
+hooks/useChat.js               — 状态层：消息生命周期管理、流式内容累积
+components/Main/MessageList.jsx — 渲染层：Virtuoso 按需渲染，增量展示
 ```
 
 ### StreamParser
@@ -44,7 +89,7 @@ Main.jsx + Virtuoso      — 渲染层：按需渲染，增量展示
 
 ### 内容累积（避免 Array mutation）
 
-`onSent` 使用组件级 `streamedContentRef`（useRef）累积已接收文本，每次 chunk 回调从 ref 读取完整内容映射到消息对象，避免了旧实现中 `Array.splice` mutation 的反模式。
+`useChat` 使用组件级 `streamedContentRef`（useRef）累积已接收文本，每次 chunk 回调从 ref 读取完整内容映射到消息对象，避免了旧实现中 `Array.splice` mutation 的反模式。
 
 ---
 
@@ -96,7 +141,7 @@ messages (
 
 - `BrowserRouter` 包裹整个应用（`main.jsx`）
 - URL 格式：`/chat/:sessionId`
-- `currentSessionId` 从 `useLocation().pathname` 派生（`useMemo`），不作为独立 state
+- `currentSessionId` 从 `useLocation().pathname` 派生，不作为独立 state
 - `loadSession` 只调 `navigate('/chat/:id')`，`useEffect([currentSessionId])` 监听 URL 变化后自动从后端拉取消息
 - 刷新页面时 URL 中的 sessionId 直接恢复上次会话
 
@@ -143,31 +188,13 @@ processing ─── onend（无内容）────────────→
 
 - 使用 `react-virtuoso` 替代 `messages.map(...)` 全量渲染
 - `followOutput`：用户在底部时自动跟随流式输出滚动，上滑时不强制抢焦
-- `atBottomStateChange`：追踪滚动位置，存入 `isAtBottom` 状态
+- `atBottomStateChange`：追踪滚动位置，存入 Context 的 `isAtBottom` 状态
 - `overscan={240}`：预渲染临近区域节点，避免快速滚动时白屏
 - `scrollToIndex`：生成中自动滚到最新消息（`behavior: 'auto'`），生成结束后平滑滚动（`'smooth'`）
 
 ---
 
-## 6. 代码质量要点
-
-### Context 设计原则
-
-- 移除无组件消费的 state：`loading`、`resultData`、`recentPrompt`
-- `showResult` 为派生值（`messages.length > 0`），不作为 state
-- `updateSessionMessages` 不对外暴露（内部辅助函数）
-- 消息 ID 使用 `crypto.randomUUID()` 避免 `Date.now()` 碰撞
-
-### Session 切换安全
-
-切换/新建 session 时调用 `streamParser.abort(false)`：
-- 立即停止 setInterval（stopFlush）
-- 清空 renderBuffer 和 currentOnChunk
-- 防止旧 session 的 onChunk 回调在 setMessages 后继续覆盖新 session 状态
-
----
-
-## 7. 本地开发
+## 6. 本地开发
 
 ```bash
 # 安装依赖
@@ -195,23 +222,42 @@ PORT=3001
 
 ---
 
-## 8. 文件结构
+## 7. 文件结构
 
 ```
-├── server.js                        后端：SQLite + API 路由 + DeepSeek 代理
+├── server.js                        入口（委托给 server/index.js）
+├── server/
+│   ├── index.js                     HTTP 服务 + 路由分发
+│   ├── db.js                        SQLite 单例 + prepared statements
+│   ├── providers/
+│   │   └── deepseek.js              DeepSeek 流式适配器
+│   └── handlers/
+│       ├── sessions.js              会话 CRUD
+│       ├── messages.js              消息读写
+│       └── chat.js                  流式聊天（调用 provider）
 ├── chat.db                          SQLite 数据库（本地，不入库）
 ├── vite.config.js                   Vite 配置（dev proxy /api → 3001）
 └── src/
     ├── main.jsx                     入口，BrowserRouter + ContextProvider
     ├── App.jsx                      根组件
+    ├── api/
+    │   ├── client.js                apiGet / apiPost / apiDelete 封装
+    │   ├── sessions.js              会话 API 函数
+    │   └── messages.js              消息 API 函数
     ├── context/
-    │   └── Context.jsx              全局状态：session、messages、流式、语音
+    │   └── Context.jsx              组合层：串联各 hook，暴露 contextValue
     ├── services/
     │   └── streamParser.js          SSE 解析 + 打字机节流输出
     ├── hooks/
+    │   ├── useSessions.js           会话 CRUD + 路由导航
+    │   ├── useChat.js               消息加载 + 流式生成
     │   └── useSpeechRecognition.js  语音输入三态状态机
     └── components/
-        ├── Main/                    聊天主界面（Virtuoso 列表 + 输入框）
+        ├── Main/
+        │   ├── Main.jsx             布局骨架
+        │   ├── WelcomeScreen.jsx    欢迎界面 + 建议卡片
+        │   ├── MessageList.jsx      Virtuoso 虚拟消息列表
+        │   └── ChatInput.jsx        输入框 + 语音 + 发送/停止
         ├── SideBar/                 会话列表（可拖拽宽度）
         └── MarkdownRenderer/        代码高亮 Markdown 渲染
 ```
