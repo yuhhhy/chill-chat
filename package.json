@@ -3,13 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "24.15.0",
+    "npm": ">=10"
+  },
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run dev\"",
+    "start": "npm run rebuild:native && concurrently \"npm run server\" \"npm run dev\"",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "server": "node server.js"
+    "server": "node server.js",
+    "rebuild:native": "npm rebuild better-sqlite3"
   },
   "dependencies": {
     "@google/generative-ai": "^0.3.1",
