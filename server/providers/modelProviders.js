@@ -45,6 +45,57 @@ const providerConfig = {
   }
 };
 
+function parseCustomModels() {
+  if (!process.env.CUSTOM_MODELS) return [];
+
+  try {
+    let customModelsText = process.env.CUSTOM_MODELS;
+    if (customModelsText.includes('\\"')) {
+      customModelsText = customModelsText.replace(/\\"/g, '"');
+    }
+
+    const parsed = JSON.parse(customModelsText);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((model) => ({
+        id: String(model.id || '').trim(),
+        label: String(model.label || '').trim(),
+        apiUrl: String(model.apiUrl || '').trim(),
+        apiKey: String(model.apiKey || '').trim(),
+        model: String(model.model || '').trim(),
+        apiType: 'openai-compatible'
+      }))
+      .filter((model) => model.id && model.label && model.apiUrl && model.model);
+  } catch (error) {
+    console.error('CUSTOM_MODELS parse error:', error);
+    return [];
+  }
+}
+
+function getCustomModel(provider) {
+  return parseCustomModels().find((model) => model.id === provider);
+}
+
+function resolveOpenAiCompatibleUrl(apiUrl) {
+  let endpoint;
+  try {
+    endpoint = new URL(apiUrl);
+  } catch {
+    throw new Error('自定义模型 API 地址必须包含协议和域名，例如：https://api.example.com/v1');
+  }
+
+  const pathname = endpoint.pathname.replace(/\/+$/, '');
+
+  if (pathname.endsWith('/chat/completions')) {
+    endpoint.pathname = pathname;
+    return endpoint.toString();
+  }
+
+  endpoint.pathname = `${pathname || ''}/chat/completions`;
+  return endpoint.toString();
+}
+
 function writeSseHeaders(res) {
   if (res.headersSent) return;
   res.setHeader('Content-Type', 'text/event-stream');
@@ -72,10 +123,24 @@ function writeOpenAiDone(res) {
 
 function resolveProvider(provider) {
   const normalized = String(provider || DEFAULT_PROVIDER).toLowerCase();
-  return providerConfig[normalized] ? normalized : DEFAULT_PROVIDER;
+  if (providerConfig[normalized]) return normalized;
+  const rawProvider = String(provider || '');
+  return getCustomModel(rawProvider) ? rawProvider : DEFAULT_PROVIDER;
 }
 
 function getRuntimeConfig(provider) {
+  const customModel = getCustomModel(provider);
+  if (customModel) {
+    return {
+      apiKey: customModel.apiKey,
+      apiType: customModel.apiType,
+      apiUrl: resolveOpenAiCompatibleUrl(customModel.apiUrl),
+      label: customModel.label,
+      model: customModel.model,
+      type: 'openai-compatible'
+    };
+  }
+
   const config = providerConfig[provider];
   const label = providerLabels[provider];
   const apiKey = process.env[config.apiKey];
@@ -309,9 +374,29 @@ function streamClaude(messages, res, config) {
 }
 
 export function getModelNames() {
-  return Object.fromEntries(
+  const builtInNames = Object.fromEntries(
     Object.entries(providerConfig).map(([id, cfg]) => [id, process.env[cfg.model] || ''])
   );
+  const customNames = Object.fromEntries(
+    parseCustomModels().map((customModel) => [customModel.id, customModel.model])
+  );
+  return { ...builtInNames, ...customNames };
+}
+
+export function getPublicCustomModels({ includeApiKey = false } = {}) {
+  return parseCustomModels().map((customModel) => ({
+    id: customModel.id,
+    label: customModel.label,
+    description: customModel.model,
+    apiUrl: customModel.apiUrl,
+    model: customModel.model,
+    hasApiKey: Boolean(customModel.apiKey),
+    ...(includeApiKey ? { apiKey: customModel.apiKey } : {})
+  }));
+}
+
+export function saveCustomModels(models) {
+  process.env.CUSTOM_MODELS = JSON.stringify(models);
 }
 
 export function streamChat(messages, res, provider) {

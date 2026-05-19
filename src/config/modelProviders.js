@@ -36,5 +36,18 @@ export const modelProviderOptions = [
 ];
 
 export function getModelProviderMeta(provider = 'deepseek') {
-  return modelProviderOptions.find((model) => model.id === provider) || modelProviderOptions[2];
+  const model = modelProviderOptions.find((option) => option.id === provider);
+  if (model) return model;
+
+  if (String(provider || '').startsWith('custom-')) {
+    return {
+      id: provider,
+      label: 'Custom',
+      description: 'Custom OpenAI-compatible model',
+      initials: 'M',
+      tone: 'custom'
+    };
+  }
+
+  return modelProviderOptions[2];
 }

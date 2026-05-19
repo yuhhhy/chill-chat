@@ -26,3 +26,8 @@
     background: #ffffff;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
+
+.model-avatar-custom {
+    background: linear-gradient(135deg, #2f6fed, #12a88a);
+    box-shadow: 0 0 0 1px rgba(47, 111, 237, 0.16);
+}

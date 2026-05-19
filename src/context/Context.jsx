@@ -3,6 +3,7 @@ import { useSessions } from "../hooks/useSessions.js";
 import { useChat } from "../hooks/useChat.js";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
 import { useFileAttachment } from "../hooks/useFileAttachment.js";
+import { fetchCustomModels } from "../api/modelConfig.js";
 
 export const Context = createContext();
 
@@ -32,16 +33,24 @@ const ContextProvider = ({ children }) => {
     return CONTEXT_TURN_COUNT_OPTIONS.has(stored) ? stored : DEFAULT_CONTEXT_TURN_COUNT;
   });
   const [modelNames, setModelNames] = useState({});
+  const [customModels, setCustomModels] = useState([]);
   const virtuosoRef = useRef(null);
   const inputDraftsRef = useRef(new Map()); // sessionId -> draft text
   const prevSessionIdRef = useRef(null);
 
-  useEffect(() => {
+  const refreshModelConfig = useCallback(() => {
     fetch('/api/config/models')
       .then(r => r.json())
       .then(setModelNames)
       .catch(() => {});
+    fetchCustomModels()
+      .then(setCustomModels)
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    refreshModelConfig();
+  }, [refreshModelConfig]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -56,6 +65,7 @@ const ContextProvider = ({ children }) => {
   const { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate, deleteChatMessage, updateChatMessage, sendEditedUserMessage } = useChat({
     currentSessionId,
     contextTurnCount,
+    customModels,
     modelProvider,
     onSessionUpdated: updateSession
   });
@@ -140,6 +150,7 @@ const ContextProvider = ({ children }) => {
     attachedFiles,
     createNewSession,
     currentSessionId,
+    customModels,
     deleteSession,
     deleteChatMessage,
     fileInputRef,
@@ -157,6 +168,7 @@ const ContextProvider = ({ children }) => {
     openFilePicker,
     regenerate,
     removeFile,
+    refreshModelConfig,
     scrollToBottom,
     sendEditedUserMessage,
     sessions,
@@ -182,6 +194,7 @@ const ContextProvider = ({ children }) => {
     deleteChatMessage,
     fileInputRef,
     contextTurnCount,
+    customModels,
     input,
     isAtBottom,
     isGenerating,
@@ -195,6 +208,7 @@ const ContextProvider = ({ children }) => {
     openFilePicker,
     regenerate,
     removeFile,
+    refreshModelConfig,
     scrollToBottom,
     sendEditedUserMessage,
     sessions,

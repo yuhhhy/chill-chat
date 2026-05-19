@@ -4,6 +4,7 @@ import { getSessions, createSession, deleteSession } from './handlers/sessions.j
 import { getMessages, addMessages, deleteMessage, updateMessage } from './handlers/messages.js';
 import { handleChatStream } from './handlers/chat.js';
 import { createChatRun, subscribeChatRun, cancelChatRun } from './handlers/chatRuns.js';
+import { createCustomModel, deleteCustomModel, getCustomModels, updateCustomModel } from './handlers/modelConfig.js';
 import { getModelNames } from './providers/modelProviders.js';
 
 dotenv.config();
@@ -47,6 +48,15 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && path === '/api/chat-runs') return createChatRun(req, res, ctx);
   if (req.method === 'GET'  && path === '/health')            return json(res, { status: 'ok' });
   if (req.method === 'GET'  && path === '/api/config/models') return json(res, getModelNames());
+  if (req.method === 'GET'  && path === '/api/config/custom-models') return getCustomModels(req, res, ctx);
+  if (req.method === 'POST' && path === '/api/config/custom-models') return createCustomModel(req, res, ctx);
+
+  const customModelMatch = path.match(/^\/api\/config\/custom-models\/([^/?]+)$/);
+  if (customModelMatch) {
+    const customModelId = decodeURIComponent(customModelMatch[1]);
+    if (req.method === 'PATCH') return updateCustomModel(req, res, { ...ctx, customModelId });
+    if (req.method === 'DELETE') return deleteCustomModel(req, res, { ...ctx, customModelId });
+  }
 
   const chatRunEventsMatch = path.match(/^\/api\/chat-runs\/([^/?]+)\/events(?:\?.*)?$/);
   if (chatRunEventsMatch) {
