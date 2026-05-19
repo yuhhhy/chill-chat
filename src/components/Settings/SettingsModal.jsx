@@ -72,8 +72,8 @@ const SettingsModal = ({ onClose }) => {
             {activeSection === 'general' ? (
               <div className="settings-section">
                 <div className="settings-section-heading">
-                  <h3>主题</h3>
-                  <p>调整应用的基础显示偏好。</p>
+                  <h3>通用设置</h3>
+                  <p>调整应用的通用设置偏好。</p>
                 </div>
 
                 <div className="settings-row">
@@ -142,6 +142,10 @@ const SettingsModal = ({ onClose }) => {
               </div>
             ) : activeSection === 'model' ? (
               <>
+                <div className="settings-section-heading">
+                  <h3>模型设置</h3>
+                  <p>调整应用的模型设置偏好。</p>
+                </div>
                 <div className="model-grid" role="radiogroup" aria-label="选择模型">
                   {modelProviderOptions.map((model) => (
                     <button
