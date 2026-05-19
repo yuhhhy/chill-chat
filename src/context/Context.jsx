@@ -53,7 +53,7 @@ const ContextProvider = ({ children }) => {
     createNewSession, loadSession, deleteSession, updateSession
   } = useSessions();
 
-  const { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate } = useChat({
+  const { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate, deleteChatMessage } = useChat({
     currentSessionId,
     contextTurnCount,
     modelProvider,
@@ -141,6 +141,7 @@ const ContextProvider = ({ children }) => {
     createNewSession,
     currentSessionId,
     deleteSession,
+    deleteChatMessage,
     fileInputRef,
     contextTurnCount,
     input,
@@ -176,6 +177,7 @@ const ContextProvider = ({ children }) => {
     createNewSession,
     currentSessionId,
     deleteSession,
+    deleteChatMessage,
     fileInputRef,
     contextTurnCount,
     input,

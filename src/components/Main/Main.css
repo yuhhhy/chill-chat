@@ -419,11 +419,19 @@ html[data-theme="dark"] .mic-button-icon {
     display: none;
 }
 
+.user-message-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    max-width: 70%;
+}
+
 .user-message .message-content {
     background-color: var(--surface-subtle);
     color: var(--text-primary);
     box-shadow: none;
     border: none;
+    max-width: 100%;
 }
 
 .message-content {
@@ -657,21 +665,27 @@ html[data-theme="dark"] .mic-button-icon {
     font-style: italic;
 }
 
-/* Action bar below AI messages */
+.message-action-block {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-top: 10px;
+}
+
+/* Action bar below messages */
 .action-bar {
     display: flex;
     align-items: center;
     gap: 2px;
-    margin-top: 10px;
 }
 
 .action-model-name {
-    margin-left: 6px;
+    margin-top: 2px;
     color: var(--text-muted);
     font-size: 13.5px;
     letter-spacing: 0.01em;
     user-select: none;
-    line-height: 28px;
+    line-height: 1.35;
 }
 
 .action-bar button {
@@ -694,9 +708,52 @@ html[data-theme="dark"] .mic-button-icon {
     color: var(--text-primary);
 }
 
+.user-action-bar {
+    align-self: flex-end;
+    margin-top: 4px;
+}
+
 .action-bar button:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+.more-action {
+    position: relative;
+    display: inline-flex;
+}
+
+.more-action-menu {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    right: 0;
+    min-width: 112px;
+    padding: 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface-elevated);
+    box-shadow: var(--shadow-soft);
+    z-index: 5;
+}
+
+.ai-message .more-action-menu {
+    right: auto;
+    left: 0;
+}
+
+.action-bar .more-action-item {
+    width: 100%;
+    height: 32px;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0 8px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.action-bar .more-action-item.danger:hover {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
 }
 
 .message-status {
@@ -823,7 +880,7 @@ html[data-theme="dark"] .mic-button-icon {
     .search-actions{
         gap: 5px;
     }
-    .user-message .message-content {
+    .user-message-stack {
         max-width: 82%;
     }
 }

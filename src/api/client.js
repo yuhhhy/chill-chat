@@ -15,7 +15,7 @@ export async function apiPost(path, body) {
 }
 
 export async function apiDelete(path) {
-  const res = await fetch(path, { method: 'DELETE' });
+  const res = await fetch(path, { method: 'DELETE', keepalive: true });
   if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
   return res.json();
 }

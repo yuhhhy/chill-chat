@@ -3,6 +3,8 @@ import { fetchMessages, saveMessages, deleteMessage as deleteMessageApi } from '
 import { createChatRun, cancelChatRun } from '../api/chatRuns.js';
 import StreamParser from '../services/streamParser.js';
 
+const PENDING_DELETED_MESSAGES_STORAGE_KEY = 'chill-chat:pending-deleted-messages';
+
 function toViewMessage(m) {
   return {
     id: m.id,
@@ -13,6 +15,47 @@ function toViewMessage(m) {
     timestamp: new Date(m.created_at * 1000).toLocaleString(),
     status: m.status || 'completed'
   };
+}
+
+function readPendingDeletedMessages() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PENDING_DELETED_MESSAGES_STORAGE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePendingDeletedMessages(pending) {
+  if (typeof window === 'undefined') return;
+  const hasPending = Object.values(pending).some(ids => Array.isArray(ids) && ids.length > 0);
+  if (!hasPending) {
+    window.localStorage.removeItem(PENDING_DELETED_MESSAGES_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(PENDING_DELETED_MESSAGES_STORAGE_KEY, JSON.stringify(pending));
+}
+
+function addPendingDeletedMessage(sessionId, messageId) {
+  const pending = readPendingDeletedMessages();
+  const ids = new Set(pending[sessionId] || []);
+  ids.add(messageId);
+  pending[sessionId] = [...ids];
+  writePendingDeletedMessages(pending);
+}
+
+function removePendingDeletedMessage(sessionId, messageId) {
+  const pending = readPendingDeletedMessages();
+  pending[sessionId] = (pending[sessionId] || []).filter(id => id !== messageId);
+  if (pending[sessionId].length === 0) {
+    delete pending[sessionId];
+  }
+  writePendingDeletedMessages(pending);
+}
+
+function getPendingDeletedMessageIds(sessionId) {
+  return new Set(readPendingDeletedMessages()[sessionId] || []);
 }
 
 function getMessagesWithContextTurnLimit(messages, contextTurnCount) {
@@ -48,6 +91,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
 
     if (parser) parser.assistantPersisted = true;
     saveMessages(sessionId, [{
+      id: message.id,
       role: 'assistant',
       content: message.content || '',
       reasoningContent: message.reasoningContent || '',
@@ -79,9 +123,16 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
     setIsGenerating(false);
     setIsLoadingMessages(true);
 
+    const pendingDeletedIds = getPendingDeletedMessageIds(currentSessionId);
+    pendingDeletedIds.forEach(messageId => {
+      deleteMessageApi(currentSessionId, messageId)
+        .then(() => removePendingDeletedMessage(currentSessionId, messageId))
+        .catch(err => console.error('Failed to flush pending deleted message:', err));
+    });
+
     fetchMessages(currentSessionId).then(rows => {
       if (currentSessionIdRef.current !== currentSessionId) return;
-      setMessages(rows.map(toViewMessage));
+      setMessages(rows.filter(row => !pendingDeletedIds.has(row.id)).map(toViewMessage));
       setIsLoadingMessages(false);
     });
   }, [currentSessionId]);
@@ -170,6 +221,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
           syncMessages(completed);
           parser.assistantPersisted = true;
           saveMessages(capturedSessionId, [{
+            id: aiMessagePlaceholder.id,
             role: 'assistant',
             content: streamedContent,
             reasoningContent: streamedReasoningContent,
@@ -213,7 +265,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
     setMessages(nextMessages);
     setIsGenerating(true);
 
-    saveMessages(currentSessionId, [{ role: 'user', content: messageText }])
+    saveMessages(currentSessionId, [{ id: userMessage.id, role: 'user', content: messageText }])
       .then(updatedSession => onSessionUpdated(updatedSession));
 
     const aiMessage = {
@@ -295,5 +347,27 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
     );
   }, []);
 
-  return { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate };
+  const deleteChatMessage = useCallback(async (messageId) => {
+    if (!currentSessionId || !messageId) return;
+
+    addPendingDeletedMessage(currentSessionId, messageId);
+
+    const cachedMessages = sessionMessagesRef.current.get(currentSessionId);
+    const previousMessages = cachedMessages || messages;
+    const nextMessages = previousMessages.filter(message => message.id !== messageId);
+
+    setMessages(nextMessages);
+    if (cachedMessages) {
+      sessionMessagesRef.current.set(currentSessionId, nextMessages);
+    }
+
+    try {
+      await deleteMessageApi(currentSessionId, messageId);
+      removePendingDeletedMessage(currentSessionId, messageId);
+    } catch (err) {
+      console.error('Failed to delete message from DB:', err);
+    }
+  }, [currentSessionId, messages]);
+
+  return { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate, deleteChatMessage };
 }
