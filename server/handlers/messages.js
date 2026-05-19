@@ -1,8 +1,8 @@
-import { randomUUID } from 'crypto';
-import db, { stmt } from '../db.js';
+import * as messagesDb from '../db/messages.js';
+import * as sessionsDb from '../db/sessions.js';
 
 export function deleteMessage(req, res) {
-  stmt.deleteMessage.run(req.params.messageId, req.params.sessionId);
+  messagesDb.deleteMessage(req.params.messageId, req.params.sessionId);
   res.json({ ok: true });
 }
 
@@ -13,7 +13,7 @@ export function updateMessage(req, res) {
     return;
   }
 
-  const result = stmt.updateMessage.run(content, req.params.messageId, req.params.sessionId);
+  const result = messagesDb.updateMessage(content, req.params.messageId, req.params.sessionId);
   if (result.changes === 0) {
     res.status(404).json({ error: '消息不存在' });
     return;
@@ -23,9 +23,9 @@ export function updateMessage(req, res) {
 }
 
 export function getMessages(req, res) {
-  const messages = stmt.listMessages.all(req.params.sessionId).map((message) => ({
+  const messages = messagesDb.listMessages(req.params.sessionId).map((message) => ({
     ...message,
-    sources: stmt.listMessageSources.all(message.id).map((source) => ({
+    sources: messagesDb.listMessageSources(message.id).map((source) => ({
       id: source.id,
       chunkId: source.chunk_id,
       order: source.citation_order,
@@ -43,40 +43,14 @@ export function getMessages(req, res) {
 export function addMessages(req, res) {
   const { sessionId } = req.params;
   const { messages } = req.body;
-  const isFirstBatch = stmt.countMessages.get(sessionId).count === 0;
+  const isFirstBatch = messagesDb.countMessages(sessionId) === 0;
 
-  const insertAll = db.transaction((msgs) => {
-    for (const msg of msgs) {
-      const reasoningContent = msg.reasoningContent ?? msg.reasoning_content ?? '';
-      const modelProvider = msg.modelProvider ?? msg.model_provider ?? '';
-      const status = msg.status ?? 'completed';
-      const messageId = msg.id || randomUUID();
-      stmt.insertMessage.run(messageId, sessionId, msg.role, msg.content, reasoningContent, modelProvider, status);
-      stmt.deleteMessageSources.run(messageId);
-      if (Array.isArray(msg.sources)) {
-        msg.sources.slice(0, 12).forEach((source, index) => {
-          stmt.insertMessageSource.run(
-            randomUUID(),
-            messageId,
-            source.chunkId || source.chunk_id || null,
-            Number(source.order ?? source.citation_order ?? index + 1),
-            Number(source.score ?? 0),
-            source.collectionId || source.collection_id || '',
-            source.documentId || source.document_id || '',
-            source.documentName || source.document_name || 'Unknown source',
-            Number(source.chunkIndex ?? source.chunk_index ?? 0),
-            source.excerpt || ''
-          );
-        });
-      }
-    }
-  });
-  insertAll(messages);
+  messagesDb.insertMessagesInTransaction(sessionId, messages);
 
   if (isFirstBatch) {
     const firstUser = messages.find(m => m.role === 'user');
-    if (firstUser) stmt.updateTitle.run(firstUser.content.slice(0, 20), sessionId);
+    if (firstUser) sessionsDb.updateSessionTitle(sessionId, firstUser.content.slice(0, 20));
   }
 
-  res.json(stmt.getSession.get(sessionId));
+  res.json(sessionsDb.getSession(sessionId));
 }

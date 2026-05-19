@@ -1,5 +1,5 @@
 import { Writable } from 'stream';
-import { streamChat } from '../providers/modelProviders.js';
+import { streamChat } from '../providers/registry.js';
 import { buildRagContext } from '../rag/store.js';
 
 const RUN_TTL_MS = 30 * 60 * 1000;
