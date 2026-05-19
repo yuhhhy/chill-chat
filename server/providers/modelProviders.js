@@ -1,4 +1,6 @@
 import https from 'https';
+import { writeSseHeaders, writeSseError, writeOpenAiChunk, writeOpenAiDone } from './sse.js';
+import { getCustomModel, parseCustomModels } from './customModels.js';
 
 const MAX_TOKENS = 8192;
 const DEFAULT_PROVIDER = 'deepseek';
@@ -45,38 +47,6 @@ const providerConfig = {
   }
 };
 
-function parseCustomModels() {
-  if (!process.env.CUSTOM_MODELS) return [];
-
-  try {
-    let customModelsText = process.env.CUSTOM_MODELS;
-    if (customModelsText.includes('\\"')) {
-      customModelsText = customModelsText.replace(/\\"/g, '"');
-    }
-
-    const parsed = JSON.parse(customModelsText);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((model) => ({
-        id: String(model.id || '').trim(),
-        label: String(model.label || '').trim(),
-        apiUrl: String(model.apiUrl || '').trim(),
-        apiKey: String(model.apiKey || '').trim(),
-        model: String(model.model || '').trim(),
-        apiType: 'openai-compatible'
-      }))
-      .filter((model) => model.id && model.label && model.apiUrl && model.model);
-  } catch (error) {
-    console.error('CUSTOM_MODELS parse error:', error);
-    return [];
-  }
-}
-
-function getCustomModel(provider) {
-  return parseCustomModels().find((model) => model.id === provider);
-}
-
 function resolveOpenAiCompatibleUrl(apiUrl) {
   let endpoint;
   try {
@@ -86,7 +56,6 @@ function resolveOpenAiCompatibleUrl(apiUrl) {
   }
 
   const pathname = endpoint.pathname.replace(/\/+$/, '');
-
   if (pathname.endsWith('/chat/completions')) {
     endpoint.pathname = pathname;
     return endpoint.toString();
@@ -94,61 +63,6 @@ function resolveOpenAiCompatibleUrl(apiUrl) {
 
   endpoint.pathname = `${pathname || ''}/chat/completions`;
   return endpoint.toString();
-}
-
-function writeSseHeaders(res) {
-  if (res.headersSent) return;
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-}
-
-function writeSseError(res, message) {
-  writeSseHeaders(res);
-  res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
-  res.write('data: [DONE]\n\n');
-  res.end();
-}
-
-function writeOpenAiChunk(res, content) {
-  if (!content) return;
-  res.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
-}
-
-function writeOpenAiDone(res) {
-  res.write('data: [DONE]\n\n');
-  res.end();
-}
-
-function resolveProvider(provider) {
-  const normalized = String(provider || DEFAULT_PROVIDER).toLowerCase();
-  if (providerConfig[normalized]) return normalized;
-  const rawProvider = String(provider || '');
-  return getCustomModel(rawProvider) ? rawProvider : DEFAULT_PROVIDER;
-}
-
-function getRuntimeConfig(provider) {
-  const customModel = getCustomModel(provider);
-  if (customModel) {
-    return {
-      apiKey: customModel.apiKey,
-      apiType: customModel.apiType,
-      apiUrl: resolveOpenAiCompatibleUrl(customModel.apiUrl),
-      label: customModel.label,
-      model: customModel.model,
-      type: 'openai-compatible'
-    };
-  }
-
-  const config = providerConfig[provider];
-  const label = providerLabels[provider];
-  const apiKey = process.env[config.apiKey];
-  const apiType = (process.env[config.apiType] || config.type).toLowerCase();
-  const model = process.env[config.model];
-  const apiUrl = process.env[config.apiUrl] || config.defaultUrl;
-
-  return { ...config, apiKey, apiType, apiUrl, label, model };
 }
 
 function requestJsonStream({ body, headers, method = 'POST', timeout = 120000, url }, onResponse) {
@@ -193,59 +107,70 @@ function handleUpstreamError(upstreamRes, res, label) {
 
 function mapGeminiMessages(messages) {
   return messages
-    .filter(message => message.role !== 'system')
-    .map((message) => ({
-      role: message.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: message.content }]
+    .filter(m => m.role !== 'system')
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
     }));
 }
 
 function mapClaudeMessages(messages) {
   return messages
-    .filter((message) => message.role === 'user' || message.role === 'assistant')
-    .map((message) => ({
-      role: message.role,
-      content: message.content
-    }));
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => ({ role: m.role, content: m.content }));
 }
 
 function getSystemPrompt(messages) {
   return messages
-    .filter(message => message.role === 'system')
-    .map(message => message.content)
+    .filter(m => m.role === 'system')
+    .map(m => m.content)
     .join('\n\n');
 }
 
-function streamOpenAiCompatible(messages, res, config) {
-  const requestBody = {
-    model: config.model,
-    messages,
-    max_tokens: MAX_TOKENS,
-    temperature: 0.7,
-    stream: true
-  };
+function resolveProvider(provider) {
+  const normalized = String(provider || DEFAULT_PROVIDER).toLowerCase();
+  if (providerConfig[normalized]) return normalized;
+  return getCustomModel(String(provider || '')) ? String(provider) : DEFAULT_PROVIDER;
+}
 
+function getRuntimeConfig(provider) {
+  const customModel = getCustomModel(provider);
+  if (customModel) {
+    return {
+      apiKey: customModel.apiKey,
+      apiType: customModel.apiType,
+      apiUrl: resolveOpenAiCompatibleUrl(customModel.apiUrl),
+      label: customModel.label,
+      model: customModel.model,
+      type: 'openai-compatible'
+    };
+  }
+
+  const config = providerConfig[provider];
+  const label = providerLabels[provider];
+  const apiKey = process.env[config.apiKey];
+  const apiType = (process.env[config.apiType] || config.type).toLowerCase();
+  const model = process.env[config.model];
+  const apiUrl = process.env[config.apiUrl] || config.defaultUrl;
+
+  return { ...config, apiKey, apiType, apiUrl, label, model };
+}
+
+function streamOpenAiCompatible(messages, res, config) {
   const upstream = requestJsonStream({
     url: config.apiUrl,
-    body: requestBody,
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`
-    }
+    body: { model: config.model, messages, max_tokens: MAX_TOKENS, temperature: 0.7, stream: true },
+    headers: { Authorization: `Bearer ${config.apiKey}` }
   }, (upstreamRes) => {
     writeSseHeaders(res);
-
     if (upstreamRes.statusCode < 200 || upstreamRes.statusCode >= 300) {
       handleUpstreamError(upstreamRes, res, config.label);
       return;
     }
-
     upstreamRes.pipe(res);
   });
 
-  upstream.on('error', (error) => {
-    writeSseError(res, `流式请求失败：${error.message}`);
-  });
-
+  upstream.on('error', (error) => writeSseError(res, `流式请求失败：${error.message}`));
   upstream.on('timeout', () => {
     upstream.destroy();
     writeSseError(res, '请求超时');
@@ -259,25 +184,17 @@ function streamGemini(messages, res, config) {
   const url = `${baseUrl}/${encodeURIComponent(config.model)}:streamGenerateContent?alt=sse`;
   const requestBody = {
     contents: mapGeminiMessages(messages),
-    generationConfig: {
-      maxOutputTokens: MAX_TOKENS,
-      temperature: 0.7
-    }
+    generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7 }
   };
   const systemPrompt = getSystemPrompt(messages);
-  if (systemPrompt) {
-    requestBody.systemInstruction = { parts: [{ text: systemPrompt }] };
-  }
+  if (systemPrompt) requestBody.systemInstruction = { parts: [{ text: systemPrompt }] };
 
   const upstream = requestJsonStream({
     url,
     body: requestBody,
-    headers: {
-      'x-goog-api-key': config.apiKey
-    }
+    headers: { 'x-goog-api-key': config.apiKey }
   }, (upstreamRes) => {
     writeSseHeaders(res);
-
     if (upstreamRes.statusCode < 200 || upstreamRes.statusCode >= 300) {
       handleUpstreamError(upstreamRes, res, config.label);
       return;
@@ -288,16 +205,13 @@ function streamGemini(messages, res, config) {
       buffer += chunk.toString('utf8');
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
-
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         const data = line.slice(6).trim();
         if (!data || data === '[DONE]') continue;
-
         try {
           const parsed = JSON.parse(data);
-          const parts = parsed?.candidates?.[0]?.content?.parts || [];
-          for (const part of parts) {
+          for (const part of parsed?.candidates?.[0]?.content?.parts || []) {
             writeOpenAiChunk(res, part.text || '');
           }
         } catch (error) {
@@ -305,16 +219,10 @@ function streamGemini(messages, res, config) {
         }
       }
     });
-
-    upstreamRes.on('end', () => {
-      writeOpenAiDone(res);
-    });
+    upstreamRes.on('end', () => writeOpenAiDone(res));
   });
 
-  upstream.on('error', (error) => {
-    writeSseError(res, `流式请求失败：${error.message}`);
-  });
-
+  upstream.on('error', (error) => writeSseError(res, `流式请求失败：${error.message}`));
   upstream.on('timeout', () => {
     upstream.destroy();
     writeSseError(res, '请求超时');
@@ -332,9 +240,7 @@ function streamClaude(messages, res, config) {
     stream: true
   };
   const systemPrompt = getSystemPrompt(messages);
-  if (systemPrompt) {
-    requestBody.system = systemPrompt;
-  }
+  if (systemPrompt) requestBody.system = systemPrompt;
 
   const upstream = requestJsonStream({
     url: config.apiUrl,
@@ -345,7 +251,6 @@ function streamClaude(messages, res, config) {
     }
   }, (upstreamRes) => {
     writeSseHeaders(res);
-
     if (upstreamRes.statusCode < 200 || upstreamRes.statusCode >= 300) {
       handleUpstreamError(upstreamRes, res, config.label);
       return;
@@ -356,12 +261,10 @@ function streamClaude(messages, res, config) {
       buffer += chunk.toString('utf8');
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
-
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         const data = line.slice(6).trim();
         if (!data || data === '[DONE]') continue;
-
         try {
           const parsed = JSON.parse(data);
           if (parsed.type === 'content_block_delta') {
@@ -372,16 +275,10 @@ function streamClaude(messages, res, config) {
         }
       }
     });
-
-    upstreamRes.on('end', () => {
-      writeOpenAiDone(res);
-    });
+    upstreamRes.on('end', () => writeOpenAiDone(res));
   });
 
-  upstream.on('error', (error) => {
-    writeSseError(res, `流式请求失败：${error.message}`);
-  });
-
+  upstream.on('error', (error) => writeSseError(res, `流式请求失败：${error.message}`));
   upstream.on('timeout', () => {
     upstream.destroy();
     writeSseError(res, '请求超时');
@@ -391,29 +288,13 @@ function streamClaude(messages, res, config) {
 }
 
 export function getModelNames() {
-  const builtInNames = Object.fromEntries(
+  const builtIn = Object.fromEntries(
     Object.entries(providerConfig).map(([id, cfg]) => [id, process.env[cfg.model] || ''])
   );
-  const customNames = Object.fromEntries(
-    parseCustomModels().map((customModel) => [customModel.id, customModel.model])
+  const custom = Object.fromEntries(
+    parseCustomModels().map((m) => [m.id, m.model])
   );
-  return { ...builtInNames, ...customNames };
-}
-
-export function getPublicCustomModels({ includeApiKey = false } = {}) {
-  return parseCustomModels().map((customModel) => ({
-    id: customModel.id,
-    label: customModel.label,
-    description: customModel.model,
-    apiUrl: customModel.apiUrl,
-    model: customModel.model,
-    hasApiKey: Boolean(customModel.apiKey),
-    ...(includeApiKey ? { apiKey: customModel.apiKey } : {})
-  }));
-}
-
-export function saveCustomModels(models) {
-  process.env.CUSTOM_MODELS = JSON.stringify(models);
+  return { ...builtIn, ...custom };
 }
 
 export function streamChat(messages, res, provider) {
@@ -430,41 +311,21 @@ export function streamChat(messages, res, provider) {
       writeOpenAiChunk(res, chunks[index]);
       index += 1;
     }, 40);
-
-    return {
-      destroy() {
-        clearInterval(timer);
-        writeSseError(res, 'mock stream cancelled');
-      }
-    };
+    return { destroy() { clearInterval(timer); writeSseError(res, 'mock stream cancelled'); } };
   }
 
   const resolvedProvider = resolveProvider(provider);
   const config = getRuntimeConfig(resolvedProvider);
 
-  if (!config.apiKey) {
-    writeSseError(res, `${config.label} API Key 未配置`);
-    return;
-  }
-
-  if (!config.model) {
-    writeSseError(res, `${config.label} 模型名称未配置`);
-    return;
-  }
+  if (!config.apiKey) { writeSseError(res, `${config.label} API Key 未配置`); return; }
+  if (!config.model)  { writeSseError(res, `${config.label} 模型名称未配置`); return; }
 
   try {
     if (config.apiType === 'openai' || config.apiType === 'openai-compatible') {
       return streamOpenAiCompatible(messages, res, config);
     }
-
-    if (config.type === 'gemini') {
-      return streamGemini(messages, res, config);
-    }
-
-    if (config.type === 'claude') {
-      return streamClaude(messages, res, config);
-    }
-
+    if (config.type === 'gemini') return streamGemini(messages, res, config);
+    if (config.type === 'claude') return streamClaude(messages, res, config);
     return streamOpenAiCompatible(messages, res, config);
   } catch (error) {
     writeSseError(res, `${config.label} 配置错误：${error.message}`);

@@ -1,17 +1,17 @@
 import { randomUUID } from 'crypto';
 import { stmt } from '../db.js';
 
-export function getSessions(req, res, { json }) {
-  json(res, stmt.listSessions.all());
+export function getSessions(req, res) {
+  res.json(stmt.listSessions.all());
 }
 
-export function createSession(req, res, { json }) {
+export function createSession(req, res) {
   const id = randomUUID();
   stmt.createSession.run(id);
-  json(res, stmt.getSession.get(id), 201);
+  res.status(201).json(stmt.getSession.get(id));
 }
 
-export function deleteSession(req, res, { json, sessionId }) {
-  stmt.deleteSession.run(sessionId);
-  json(res, { ok: true });
+export function deleteSession(req, res) {
+  stmt.deleteSession.run(req.params.sessionId);
+  res.json({ ok: true });
 }
