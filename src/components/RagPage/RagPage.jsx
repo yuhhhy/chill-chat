@@ -1,5 +1,5 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Context } from '../../context/Context';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useRagStore } from '../../stores/ragStore';
 import {
   createRagCollection,
   deleteRagCollection,
@@ -41,12 +41,10 @@ const uploadStatusText = {
 };
 
 const RagPage = () => {
-  const {
-    ragCollections,
-    refreshRagCollections,
-    selectedRagCollectionId,
-    setSelectedRagCollectionId
-  } = useContext(Context);
+  const ragCollections = useRagStore(s => s.ragCollections);
+  const refreshRagCollections = useRagStore(s => s.refreshRagCollections);
+  const selectedRagCollectionId = useRagStore(s => s.selectedRagCollectionId);
+  const setSelectedRagCollectionId = useRagStore(s => s.setSelectedRagCollectionId);
   const [activeCollectionId, setActiveCollectionId] = useState(selectedRagCollectionId || '');
   const [documents, setDocuments] = useState([]);
   const [collectionForm, setCollectionForm] = useState(emptyCollectionForm);

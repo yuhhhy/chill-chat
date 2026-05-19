@@ -1,6 +1,8 @@
-import React, { useContext, useState } from "react";
+import React, { useState } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { Context } from "../../context/Context";
+import { useChatStore } from "../../stores/chatStore";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { useUIStore } from "../../stores/uiStore";
 import MarkdownRenderer from "../MarkdownRenderer/MarkdownRenderer";
 import ModelAvatar from "../ModelAvatar/ModelAvatar";
 import MoreActionMenu from "../MoreActionMenu/MoreActionMenu";
@@ -23,7 +25,6 @@ const RegenerateIcon = () => (
 
 const ReasoningPanel = ({ content, isGenerating }) => {
   if (!content) return null;
-
   return (
     <details className="reasoning-panel" open={isGenerating}>
       <summary>
@@ -40,7 +41,6 @@ const ReasoningPanel = ({ content, isGenerating }) => {
 const SourcePanel = ({ sources = [] }) => {
   const visibleSources = sources.slice(0, 3);
   if (!visibleSources.length) return null;
-
   return (
     <div className="source-panel" aria-label="引用来源">
       {visibleSources.map((source, index) => (
@@ -58,7 +58,13 @@ const SourcePanel = ({ sources = [] }) => {
 };
 
 const MessageRow = ({ message, isLastAI }) => {
-  const { deleteChatMessage, regenerate, isGenerating, modelNames, sendEditedUserMessage, updateChatMessage } = useContext(Context);
+  const deleteChatMessage = useChatStore(s => s.deleteChatMessage);
+  const regenerate = useChatStore(s => s.regenerate);
+  const isGenerating = useChatStore(s => s.isGenerating);
+  const sendEditedUserMessage = useChatStore(s => s.sendEditedUserMessage);
+  const updateChatMessage = useChatStore(s => s.updateChatMessage);
+  const modelNames = useSettingsStore(s => s.modelNames);
+
   const [copied, setCopied] = useState(false);
   const [editText, setEditText] = useState(message.content);
   const [isEditing, setIsEditing] = useState(false);
@@ -166,10 +172,7 @@ const MessageRow = ({ message, isLastAI }) => {
     <div className="message-item ai-message">
       <ModelAvatar provider={messageProvider} className="message-avatar" />
       <div className={`message-content${isEditing ? " editing" : ""}`}>
-        <ReasoningPanel
-          content={message.reasoningContent}
-          isGenerating={isMessageGenerating}
-        />
+        <ReasoningPanel content={message.reasoningContent} isGenerating={isMessageGenerating} />
         {isEditing ? (
           <div className="message-edit-form">
             <textarea
@@ -199,35 +202,24 @@ const MessageRow = ({ message, isLastAI }) => {
         {message.status === "aborted" && (
           <div className="message-status aborted" role="status">已中断</div>
         )}
-        {message.status === "failed"  && <p className="message-status failed">生成失败，请重试</p>}
+        {message.status === "failed" && <p className="message-status failed">生成失败，请重试</p>}
         {!isMessageGenerating && !isEditing && (
           <div className="action-bar">
-              <button
-                type="button"
-                onClick={handleCopy}
-                title={copied ? "已复制" : "复制"}
-                aria-label={copied ? "已复制" : "复制"}
-              >
-                <CopyIcon />
+            <button type="button" onClick={handleCopy} title={copied ? "已复制" : "复制"} aria-label={copied ? "已复制" : "复制"}>
+              <CopyIcon />
+            </button>
+            {isLastAI && (
+              <button type="button" onClick={regenerate} disabled={isGenerating} title="重新生成" aria-label="重新生成">
+                <RegenerateIcon />
               </button>
-              {isLastAI && (
-                <button
-                  type="button"
-                  onClick={regenerate}
-                  disabled={isGenerating}
-                  title="重新生成"
-                  aria-label="重新生成"
-                >
-                  <RegenerateIcon />
-                </button>
-              )}
-              <MoreActionMenu
-                isOpen={isMoreOpen}
-                onClose={() => setIsMoreOpen(false)}
-                onDelete={handleDelete}
-                onEdit={startEditing}
-                onToggle={() => setIsMoreOpen(open => !open)}
-              />
+            )}
+            <MoreActionMenu
+              isOpen={isMoreOpen}
+              onClose={() => setIsMoreOpen(false)}
+              onDelete={handleDelete}
+              onEdit={startEditing}
+              onToggle={() => setIsMoreOpen(open => !open)}
+            />
             {modelNames[messageProvider] && (
               <span className="action-model-name">{modelNames[messageProvider]}</span>
             )}
@@ -239,7 +231,9 @@ const MessageRow = ({ message, isLastAI }) => {
 };
 
 const MessageList = () => {
-  const { messages, isAtBottom, setIsAtBottom, virtuosoRef } = useContext(Context);
+  const messages = useChatStore(s => s.messages);
+  const setIsAtBottom = useUIStore(s => s.setIsAtBottom);
+  const virtuosoRef = useUIStore(s => s.virtuosoRef);
   const lastAiIndex = messages.findLastIndex(m => m.role === "assistant");
 
   return (

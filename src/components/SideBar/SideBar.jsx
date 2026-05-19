@@ -1,8 +1,8 @@
-import React, { useContext, useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import './SideBar.css'
 import { assets } from '../../assets/assets'
-import { Context } from '../../context/Context';
+import { useSessionStore } from '../../stores/sessionStore';
 
 const COLLAPSED_WIDTH = 68;
 const DEFAULT_WIDTH = 260;
@@ -17,7 +17,11 @@ const SideBar = ({ onOpenSettings }) => {
     const location = useLocation();
     const navigate = useNavigate();
 
-    const { sessions, currentSessionId, createNewSession, loadSession, deleteSession } = useContext(Context);
+    const sessions = useSessionStore(s => s.sessions);
+    const currentSessionId = useSessionStore(s => s.currentSessionId);
+    const createNewSession = useSessionStore(s => s.createNewSession);
+    const loadSession = useSessionStore(s => s.loadSession);
+    const deleteSession = useSessionStore(s => s.deleteSession);
 
     useEffect(() => {
         const handleMouseMove = (e) => {
