@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { assets } from '../../assets/assets';
 import { EditIcon } from '../icons/ActionIcons';
 import './MoreActionMenu.css';
 
@@ -8,16 +9,6 @@ const MoreIcon = () => (
     <circle cx="5" cy="12" r="2" />
     <circle cx="12" cy="12" r="2" />
     <circle cx="19" cy="12" r="2" />
-  </svg>
-);
-
-const TrashIcon = () => (
-  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 6h18" />
-    <path d="M8 6V4h8v2" />
-    <path d="M19 6l-1 14H6L5 6" />
-    <path d="M10 11v5" />
-    <path d="M14 11v5" />
   </svg>
 );
 
@@ -108,7 +99,11 @@ const MoreActionMenu = ({
           </button>
           {showDelete && (
             <button type="button" className="more-action-item danger" role="menuitem" onClick={onDelete}>
-              <TrashIcon />
+              <span
+                className="more-action-icon"
+                style={{ '--icon-url': `url(${assets.trash})` }}
+                aria-hidden="true"
+              />
               <span>删除</span>
             </button>
           )}

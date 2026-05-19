@@ -175,7 +175,9 @@ const MessageRow = ({ message, isLastAI }) => {
             <MarkdownRenderer content={message.content} />
           </div>
         )}
-        {message.status === "aborted" && <p className="message-status aborted">— 已中断</p>}
+        {message.status === "aborted" && (
+          <div className="message-status aborted" role="status">已中断</div>
+        )}
         {message.status === "failed"  && <p className="message-status failed">生成失败，请重试</p>}
         {!isMessageGenerating && !isEditing && (
           <div className="action-bar">

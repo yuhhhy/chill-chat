@@ -816,17 +816,39 @@ html[data-theme="dark"] .search-box {
 }
 
 .message-status {
-    margin: 8px 0 0;
+    margin: 10px 0 0;
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 24px;
+    padding: 3px 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-elevated) 78%, var(--surface-subtle));
+    color: var(--text-muted);
     font-size: 12px;
-    font-style: italic;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    box-shadow: 0 8px 22px rgba(32, 33, 36, 0.04);
 }
 
 .message-status.aborted {
     color: var(--text-muted);
+    border-color: color-mix(in srgb, var(--border-subtle) 78%, var(--text-muted));
 }
 
 .message-status.failed {
     color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 36%, var(--border-subtle));
+    background: color-mix(in srgb, var(--surface-elevated) 86%, var(--danger));
+    box-shadow: none;
+}
+
+html[data-theme="dark"] .message-status {
+    background: color-mix(in srgb, var(--surface-elevated) 72%, var(--surface-hover));
+    box-shadow: none;
 }
 
 .stop-icon {

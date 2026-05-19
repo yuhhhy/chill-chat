@@ -16,6 +16,7 @@ import deepseek_icon from './deepseek_icon.png'
 import gemini_icon from './gemini_icon.png'
 import claude_icon from './claude_icon.svg'
 import chatgpt_icon from './chatgpt_icon.svg'
+import rag_icon from './rag_icon.svg'
 import trash from './trash_icon.svg'
 export const assets = {
     history_icon,
@@ -36,5 +37,6 @@ export const assets = {
     gemini_icon,
     claude_icon,
     chatgpt_icon,
+    rag_icon,
     trash
 }

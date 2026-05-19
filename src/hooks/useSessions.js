@@ -18,6 +18,7 @@ export function useSessions() {
     fetchSessions().then(data => {
       setSessions(data);
       if (initialSessionId) return;
+      if (location.pathname !== '/') return;
       if (data.length > 0) {
         navigate(`/chat/${data[0].id}`, { replace: true });
       } else {

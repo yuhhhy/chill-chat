@@ -59,6 +59,21 @@
     color: var(--text-primary);
 }
 
+.more-action-item svg,
+.more-action-icon {
+    width: 17px;
+    height: 17px;
+    flex-shrink: 0;
+    color: currentColor;
+}
+
+.more-action-icon {
+    display: inline-block;
+    background: currentColor;
+    mask: var(--icon-url) center / contain no-repeat;
+    -webkit-mask: var(--icon-url) center / contain no-repeat;
+}
+
 .more-action-item.danger:hover {
     background: color-mix(in srgb, var(--danger) 13%, rgba(255, 255, 255, 0.2));
     color: var(--danger);

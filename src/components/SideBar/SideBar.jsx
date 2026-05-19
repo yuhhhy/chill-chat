@@ -1,4 +1,5 @@
 import React, { useContext, useState, useRef, useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom';
 import './SideBar.css'
 import { assets } from '../../assets/assets'
 import { Context } from '../../context/Context';
@@ -13,6 +14,8 @@ const SideBar = ({ onOpenSettings }) => {
     const [width, setWidth] = useState(DEFAULT_WIDTH);
     const [isDragging, setIsDragging] = useState(false);
     const isResizing = useRef(false);
+    const location = useLocation();
+    const navigate = useNavigate();
 
     const { sessions, currentSessionId, createNewSession, loadSession, deleteSession } = useContext(Context);
 
@@ -70,13 +73,12 @@ const SideBar = ({ onOpenSettings }) => {
                 </div>
             </div>
             <div className="bottom">
-                <div className="bottom-item recent-entry">
-                    <img src={assets.question_icon} alt="" />
-                    <p className="label">Help</p>
-                </div>
-                <div className="bottom-item recent-entry">
-                    <img src={assets.history_icon} alt="" />
-                    <p className="label">Activity</p>
+                <div
+                    className={`bottom-item recent-entry ${location.pathname === '/rag' ? 'active' : ''}`}
+                    onClick={() => navigate('/rag')}
+                >
+                    <img src={assets.rag_icon} alt="" />
+                    <p className="label">RAG</p>
                 </div>
                 <div className="bottom-item recent-entry" onClick={onOpenSettings}>
                     <img src={assets.setting_icon} alt="" />
