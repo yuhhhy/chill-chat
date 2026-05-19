@@ -145,7 +145,7 @@ const ChatInput = () => {
         />
         <div className="search-actions">
           <label
-            className={`rag-select ${selectedRagCollectionId ? "active" : ""}`}
+            className={`rag-select ${selectedRagCollectionId ? "active" : "empty"}`}
             title={selectedRagCollectionId ? "当前聊天使用已选择的 RAG 知识库" : "选择 RAG 知识库"}
           >
             <BookIcon />

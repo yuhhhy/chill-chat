@@ -38,11 +38,12 @@ const ReasoningPanel = ({ content, isGenerating }) => {
 };
 
 const SourcePanel = ({ sources = [] }) => {
-  if (!sources.length) return null;
+  const visibleSources = sources.slice(0, 3);
+  if (!visibleSources.length) return null;
 
   return (
     <div className="source-panel" aria-label="引用来源">
-      {sources.map((source, index) => (
+      {visibleSources.map((source, index) => (
         <details className="source-chip" key={source.id || source.chunkId || index}>
           <summary>
             <span className="source-number">[{source.order || index + 1}]</span>

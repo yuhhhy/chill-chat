@@ -4,9 +4,9 @@ import { chunkText } from './chunking.js';
 import { createEmbeddings } from './embedding.js';
 import { extractTextFromFile } from './fileParsers.js';
 
-const TOP_K = 5;
-const MIN_SCORE = 0.2;
-const MAX_CONTEXT_CHARS = 6000;
+const TOP_K = 8;
+const MIN_SCORE = 0.25;
+const MAX_CONTEXT_CHARS = 8000;
 const EMBEDDING_BATCH_SIZE = 16;
 
 const queries = {
@@ -16,7 +16,7 @@ const queries = {
       COUNT(ch.id) AS chunk_count
     FROM rag_collections c
     LEFT JOIN rag_documents d ON d.collection_id = c.id
-    LEFT JOIN rag_chunks ch ON ch.collection_id = c.id
+    LEFT JOIN rag_chunks ch ON ch.document_id = d.id
     GROUP BY c.id
     ORDER BY c.updated_at DESC, c.created_at DESC
   `),

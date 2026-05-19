@@ -1,6 +1,656 @@
 .rag-page {
+    --rag-bg-sidebar: #EEF1F8;
+    --rag-bg-canvas: #FFFFFF;
+    --rag-bg-card: #EEF1F8;
+    --rag-bg-card-hover: #E4E9F2;
+    --rag-bg-item-active: #DCE4F2;
+    --rag-text-primary: #1F2330;
+    --rag-text-secondary: #6B7280;
+    --rag-text-tertiary: #9AA1B1;
+    --rag-text-accent: #3B82F6;
+    --rag-text-danger: #B42318;
+    --rag-bg-danger: #FDEEEE;
+    --rag-radius-sm: 8px;
+    --rag-radius-md: 16px;
+    --rag-radius-pill: 9999px;
     flex: 1;
     min-width: 0;
-    min-height: 100vh;
-    background: var(--surface-primary);
+    height: 100vh;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    background: var(--rag-bg-canvas);
+    color: var(--rag-text-primary);
+    font-family: Inter, "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif;
+}
+
+.rag-sidebar-panel {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 32px 16px;
+    background: var(--rag-bg-sidebar);
+    overflow: hidden;
+}
+
+.rag-heading {
+    padding: 0 8px;
+    margin-bottom: 24px;
+}
+
+.rag-heading h1 {
+    margin: 0;
+    font-size: 28px;
+    line-height: 1.15;
+    font-weight: 700;
+    background: linear-gradient(90deg, #4F8BF5 0%, #B85A8C 70%, #C97A5B 100%);
+    -webkit-background-clip: text;
+    color: transparent;
+}
+
+.rag-add-collection {
+    width: 100%;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: none;
+    border-radius: var(--rag-radius-pill);
+    background: var(--rag-bg-canvas);
+    color: var(--rag-text-primary);
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rag-add-collection:hover:not(:disabled) {
+    background: var(--rag-bg-card-hover);
+}
+
+.rag-add-collection span {
+    font-size: 18px;
+    line-height: 1;
+    font-weight: 400;
+}
+
+.rag-collection-list {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 24px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+
+.rag-collection-list:hover {
+    scrollbar-color: var(--rag-bg-card-hover) transparent;
+}
+
+.rag-collection-item {
+    width: 100%;
+    min-height: 40px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: var(--rag-radius-md);
+    background: transparent;
+    color: var(--rag-text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rag-collection-item:hover {
+    background: var(--rag-bg-card-hover);
+}
+
+.rag-collection-item.active {
+    background: var(--rag-bg-item-active);
+    color: var(--rag-text-accent);
+}
+
+.rag-collection-item span,
+.rag-document-row strong {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rag-collection-item span {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.rag-collection-item small {
+    display: block;
+    margin-top: 4px;
+    color: var(--rag-text-tertiary);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.rag-workbench {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 48px clamp(32px, 6vw, 96px);
+    overflow: hidden;
+    background: var(--rag-bg-canvas);
+}
+
+.rag-workbench-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.rag-workbench-header h2 {
+    margin: 0;
+    color: var(--rag-text-primary);
+    font-size: 40px;
+    line-height: 1.15;
+    font-weight: 500;
+}
+
+.rag-workbench-header p {
+    max-width: 720px;
+    margin-top: 12px;
+    color: var(--rag-text-secondary);
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.rag-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.rag-header-actions .more-action-button {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--rag-radius-sm);
+    color: var(--rag-text-secondary);
+}
+
+.rag-header-actions .more-action-button:hover {
+    background: var(--rag-bg-card);
+    color: var(--rag-text-primary);
+}
+
+.rag-error {
+    margin-bottom: 24px;
+    padding: 12px 16px;
+    border-radius: var(--rag-radius-md);
+    background: var(--rag-bg-danger);
+    color: var(--rag-text-danger);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.rag-upload-band {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 96px;
+    padding: 24px;
+    border-radius: var(--rag-radius-md);
+    background: var(--rag-bg-card);
+    margin-bottom: 24px;
+}
+
+.rag-upload-band strong {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--rag-text-primary);
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.rag-upload-band p {
+    color: var(--rag-text-secondary);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.rag-upload-band button {
+    flex-shrink: 0;
+    min-width: 96px;
+    height: 40px;
+    padding: 0 16px;
+    border: none;
+    border-radius: var(--rag-radius-pill);
+    background: var(--rag-bg-canvas);
+    color: var(--rag-text-accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rag-upload-band button:hover:not(:disabled) {
+    background: var(--rag-bg-card-hover);
+}
+
+.rag-upload-band button:disabled {
+    cursor: default;
+    color: var(--rag-text-tertiary);
+}
+
+.rag-upload-progress {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 48px;
+    padding: 24px;
+    border-radius: var(--rag-radius-md);
+    background: var(--rag-bg-card);
+}
+
+.rag-upload-total,
+.rag-upload-item-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.rag-upload-total span,
+.rag-upload-item-head span {
+    min-width: 0;
+    color: var(--rag-text-primary);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.rag-upload-total strong,
+.rag-upload-item-head small {
+    flex-shrink: 0;
+    color: var(--rag-text-tertiary);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.rag-progress-track {
+    width: 100%;
+    height: 8px;
+    overflow: hidden;
+    border-radius: var(--rag-radius-pill);
+    background: var(--rag-bg-canvas);
+}
+
+.rag-progress-track.small {
+    height: 6px;
+}
+
+.rag-progress-track span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--rag-text-accent);
+    transition: width 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rag-upload-items {
+    display: grid;
+    gap: 12px;
+}
+
+.rag-upload-item {
+    display: grid;
+    gap: 8px;
+}
+
+.rag-upload-item-head span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rag-upload-item em {
+    color: var(--rag-text-danger);
+    font-size: 13px;
+    font-style: normal;
+    line-height: 1.4;
+}
+
+.rag-documents {
+    min-height: 0;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+}
+
+.rag-section-title {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.rag-section-title h3 {
+    margin: 0;
+    color: var(--rag-text-primary);
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.rag-section-title span {
+    color: var(--rag-text-tertiary);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.rag-document-list {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+
+.rag-document-list:hover {
+    scrollbar-color: var(--rag-bg-card-hover) transparent;
+}
+
+.rag-document-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 16px;
+    min-height: 72px;
+    padding: 16px 24px;
+    border-radius: var(--rag-radius-md);
+    background: var(--rag-bg-card);
+    transition: background-color 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rag-document-row:hover {
+    background: var(--rag-bg-card-hover);
+}
+
+.rag-document-row strong {
+    color: var(--rag-text-primary);
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.rag-document-row p {
+    margin-top: 4px;
+    color: var(--rag-text-secondary);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.rag-document-row em {
+    display: block;
+    margin-top: 8px;
+    color: var(--rag-text-danger);
+    font-style: normal;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.rag-document-row button {
+    width: 52px;
+    height: 36px;
+    border: none;
+    border-radius: var(--rag-radius-sm);
+    background: transparent;
+    color: var(--rag-text-secondary);
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rag-document-row button:hover {
+    background: var(--rag-bg-card);
+    color: var(--rag-text-danger);
+}
+
+.rag-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 64px;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: var(--rag-radius-pill);
+    background: var(--rag-bg-canvas);
+    color: var(--rag-text-secondary);
+    font-size: 13px;
+    font-weight: 400;
+    white-space: nowrap;
+}
+
+.rag-status.ready {
+    color: var(--rag-text-accent);
+}
+
+.rag-status.failed {
+    color: var(--rag-text-danger);
+}
+
+.rag-status.indexing,
+.rag-status.pending {
+    color: var(--rag-text-tertiary);
+}
+
+.rag-empty {
+    padding: 48px 24px;
+    border-radius: var(--rag-radius-md);
+    color: var(--rag-text-secondary);
+    background: var(--rag-bg-card);
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.rag-empty.full {
+    margin-top: 96px;
+}
+
+.rag-collection-editor {
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(31, 35, 48, 0.18);
+}
+
+.rag-collection-form {
+    width: min(440px, 100%);
+    display: grid;
+    gap: 16px;
+    padding: 24px;
+    border-radius: var(--rag-radius-md);
+    background: var(--rag-bg-canvas);
+}
+
+.rag-collection-form-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.rag-collection-form-heading h3 {
+    margin: 0;
+    color: var(--rag-text-primary);
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.rag-editor-close {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: var(--rag-radius-sm);
+    background: transparent;
+    color: var(--rag-text-secondary);
+    cursor: pointer;
+    font-size: 24px;
+    font-weight: 400;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rag-editor-close:hover {
+    background: var(--rag-bg-card);
+    color: var(--rag-text-primary);
+}
+
+.rag-collection-field {
+    display: grid;
+    gap: 8px;
+    color: var(--rag-text-secondary);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.rag-collection-field input,
+.rag-collection-field textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: none;
+    border-radius: var(--rag-radius-md);
+    background: var(--rag-bg-card);
+    color: var(--rag-text-primary);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    outline: none;
+}
+
+.rag-collection-field input {
+    min-height: 48px;
+    padding: 0 16px;
+}
+
+.rag-collection-field textarea {
+    min-height: 96px;
+    resize: vertical;
+    padding: 16px;
+    line-height: 1.5;
+}
+
+.rag-collection-field input::placeholder,
+.rag-collection-field textarea::placeholder {
+    color: var(--rag-text-tertiary);
+}
+
+.rag-collection-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.rag-primary,
+.rag-secondary {
+    min-width: 76px;
+    min-height: 40px;
+    border: none;
+    border-radius: var(--rag-radius-pill);
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rag-primary {
+    background: var(--rag-bg-card);
+    color: var(--rag-text-accent);
+}
+
+.rag-secondary {
+    background: transparent;
+    color: var(--rag-text-secondary);
+}
+
+.rag-primary:hover:not(:disabled),
+.rag-secondary:hover:not(:disabled) {
+    background: var(--rag-bg-card-hover);
+}
+
+.rag-primary:disabled,
+.rag-secondary:disabled {
+    cursor: default;
+    color: var(--rag-text-tertiary);
+}
+
+html[data-theme="dark"] .rag-page {
+    --rag-bg-sidebar: #1B1B1C;
+    --rag-bg-canvas: #151517;
+    --rag-bg-card: #2C2C2E;
+    --rag-bg-card-hover: #343437;
+    --rag-bg-item-active: #3A3A3D;
+    --rag-text-primary: #F2F2F3;
+    --rag-text-secondary: #D0D0D2;
+    --rag-text-tertiary: #9B9BA0;
+    --rag-text-accent: #D6D6DC;
+    --rag-text-danger: #FF7F72;
+    --rag-bg-danger: #3A2A28;
+}
+
+html[data-theme="dark"] .rag-error,
+html[data-theme="dark"] .rag-status.failed,
+html[data-theme="dark"] .rag-document-row em,
+html[data-theme="dark"] .rag-document-row button:hover {
+    color: var(--rag-text-danger);
+}
+
+@media (max-width: 900px) {
+    .rag-page {
+        grid-template-columns: 1fr;
+    }
+
+    .rag-sidebar-panel {
+        padding: 24px 16px;
+    }
+
+    .rag-workbench {
+        padding: 32px 24px 48px;
+    }
+
+    .rag-workbench-header,
+    .rag-upload-band {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .rag-header-actions {
+        justify-content: flex-start;
+    }
+
+    .rag-document-row {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
 }

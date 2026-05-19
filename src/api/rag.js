@@ -43,6 +43,45 @@ export async function uploadRagDocuments(collectionId, files) {
   return res.json();
 }
 
+export function uploadRagDocument(collectionId, file, { onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('files', file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/api/rag/collections/${encodeURIComponent(collectionId)}/documents`);
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onProgress?.({
+        loaded: event.loaded,
+        total: event.total,
+        percent: Math.round((event.loaded / event.total) * 100)
+      });
+    };
+
+    xhr.onload = () => {
+      let data = null;
+      try {
+        data = JSON.parse(xhr.responseText || '{}');
+      } catch {
+        // Keep null response fallback.
+      }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error(data?.error || `上传失败：${xhr.status}`));
+        return;
+      }
+
+      resolve(data);
+    };
+
+    xhr.onerror = () => reject(new Error('上传失败，请检查网络连接'));
+    xhr.onabort = () => reject(new Error('上传已取消'));
+    xhr.send(formData);
+  });
+}
+
 export function deleteRagDocument(documentId) {
   return apiDelete(`/api/rag/documents/${encodeURIComponent(documentId)}`);
 }
