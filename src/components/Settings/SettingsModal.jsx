@@ -1,6 +1,6 @@
-import React, { useContext, useState } from 'react';
+import React, { useState } from 'react';
 import './SettingsModal.css';
-import { Context } from '../../context/Context';
+import { useSettingsStore } from '../../stores/settingsStore';
 import ModelAvatar from '../ModelAvatar/ModelAvatar';
 import { EditIcon } from '../icons/ActionIcons';
 import { modelProviderOptions } from '../../config/modelProviders';
@@ -38,16 +38,16 @@ const SettingsModal = ({ onClose }) => {
   const [customModelError, setCustomModelError] = useState('');
   const [isDeletingCustomModel, setIsDeletingCustomModel] = useState(false);
   const [isSavingCustomModel, setIsSavingCustomModel] = useState(false);
-  const {
-    contextTurnCount,
-    customModels,
-    modelProvider,
-    refreshModelConfig,
-    setContextTurnCount,
-    setModelProvider,
-    setTheme,
-    theme
-  } = useContext(Context);
+
+  const contextTurnCount = useSettingsStore(s => s.contextTurnCount);
+  const customModels = useSettingsStore(s => s.customModels);
+  const modelProvider = useSettingsStore(s => s.modelProvider);
+  const refreshModelConfig = useSettingsStore(s => s.refreshModelConfig);
+  const setContextTurnCount = useSettingsStore(s => s.setContextTurnCount);
+  const setModelProvider = useSettingsStore(s => s.setModelProvider);
+  const setTheme = useSettingsStore(s => s.setTheme);
+  const theme = useSettingsStore(s => s.theme);
+
   const isDarkMode = theme === 'dark';
   const contextTurnIndex = Math.max(
     contextTurnOptions.findIndex((option) => option.value === contextTurnCount),

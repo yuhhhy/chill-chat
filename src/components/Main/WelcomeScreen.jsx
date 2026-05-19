@@ -1,5 +1,5 @@
-import React, { useContext, useLayoutEffect, useRef, useState } from "react";
-import { Context } from "../../context/Context";
+import React, { useLayoutEffect, useRef, useState } from "react";
+import { useChatStore } from "../../stores/chatStore";
 
 const CARD_ICON_STROKE_WIDTH = 1.9;
 
@@ -53,26 +53,14 @@ const PromptIcon = ({ type }) => {
 };
 
 const promptCards = [
-  {
-    text: "建议一些即将自驾游时可以去的美丽景点",
-    icon: "compass",
-  },
-  {
-    text: '简要总结一下"城市规划"这个概念',
-    icon: "bulb",
-  },
-  {
-    text: "为我们的团队拓展活动集思广益",
-    icon: "message",
-  },
-  {
-    text: "提升以下代码的可读性",
-    icon: "code",
-  },
+  { text: "建议一些即将自驾游时可以去的美丽景点", icon: "compass" },
+  { text: '简要总结一下"城市规划"这个概念', icon: "bulb" },
+  { text: "为我们的团队拓展活动集思广益", icon: "message" },
+  { text: "提升以下代码的可读性", icon: "code" },
 ];
 
 const WelcomeScreen = () => {
-  const { onSent } = useContext(Context);
+  const send = useChatStore(s => s.send);
   const cardsRef = useRef(null);
   const [visibleCardCount, setVisibleCardCount] = useState(promptCards.length);
 
@@ -94,14 +82,12 @@ const WelcomeScreen = () => {
           Math.floor((availableWidth + columnGap) / (minCardWidth + columnGap))
         )
       );
-
       setVisibleCardCount(nextCount);
     };
 
     updateVisibleCards();
     const observer = new ResizeObserver(updateVisibleCards);
     observer.observe(cardsElement);
-
     return () => observer.disconnect();
   }, []);
 
@@ -117,7 +103,7 @@ const WelcomeScreen = () => {
         style={{ "--visible-card-count": visibleCardCount }}
       >
         {promptCards.slice(0, visibleCardCount).map((card) => (
-          <div className="card" key={card.text} onClick={() => onSent(card.text)}>
+          <div className="card" key={card.text} onClick={() => send(card.text)}>
             <p>{card.text}</p>
             <PromptIcon type={card.icon} />
           </div>

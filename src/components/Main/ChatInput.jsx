@@ -1,6 +1,10 @@
-import React, { useContext, useEffect, useRef } from "react";
-import { Context } from "../../context/Context";
-import { FILE_ACCEPT } from "../../hooks/useFileAttachment";
+import React, { useCallback, useEffect, useRef } from "react";
+import { useChatStore } from "../../stores/chatStore";
+import { useUIStore } from "../../stores/uiStore";
+import { useRagStore } from "../../stores/ragStore";
+import { useSessionStore } from "../../stores/sessionStore";
+import { useFileAttachment, FILE_ACCEPT } from "../../hooks/useFileAttachment";
+import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 
 const PaperclipIcon = () => (
   <svg className="input-action-icon attachment-action-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.15" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -38,33 +42,37 @@ const ArrowDownIcon = () => (
 );
 
 const ChatInput = () => {
+  const send = useChatStore(s => s.send);
+  const abortGeneration = useChatStore(s => s.abortGeneration);
+  const isGenerating = useChatStore(s => s.isGenerating);
+  const messages = useChatStore(s => s.messages);
+  const input = useUIStore(s => s.input);
+  const setInput = useUIStore(s => s.setInput);
+  const isAtBottom = useUIStore(s => s.isAtBottom);
+  const scrollToBottom = useUIStore(s => s.scrollToBottom);
+  const clearInputForSession = useUIStore(s => s.clearInputForSession);
+  const ragCollections = useRagStore(s => s.ragCollections);
+  const selectedRagCollectionId = useRagStore(s => s.selectedRagCollectionId);
+  const setSelectedRagCollectionId = useRagStore(s => s.setSelectedRagCollectionId);
+  const currentSessionId = useSessionStore(s => s.currentSessionId);
+
+  const { attachedFiles, fileInputRef, openFilePicker, addFiles, removeFile, clearFiles } = useFileAttachment();
+
+  const handleVoiceTranscript = useCallback((transcript) => {
+    setInput(transcript);
+    send(transcript);
+  }, [setInput, send]);
+
   const {
-    abortGeneration,
-    addFiles,
-    attachedFiles,
-    fileInputRef,
-    input,
-    isAtBottom,
-    isGenerating,
-    isVoiceSupported,
-    messages,
-    onSent,
-    openFilePicker,
-    ragCollections,
-    removeFile,
-    scrollToBottom,
-    selectedRagCollectionId,
-    setInput,
-    setSelectedRagCollectionId,
-    toggleVoiceInput,
-    voiceError,
-    voiceInputStatus,
-    voiceTranscript
-  } = useContext(Context);
+    error: voiceError,
+    isSupported: isVoiceSupported,
+    status: voiceInputStatus,
+    toggle: toggleVoiceInput,
+    transcript: voiceTranscript
+  } = useSpeechRecognition({ onTranscript: handleVoiceTranscript, sessionId: currentSessionId });
 
   const textareaRef = useRef(null);
 
-  // Reset textarea height when input is cleared (after send)
   useEffect(() => {
     if (!input && textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -77,18 +85,30 @@ const ChatInput = () => {
     e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px";
   };
 
+  const handleSend = useCallback((prompt) => {
+    if (isGenerating) return;
+    const text = (prompt !== undefined ? prompt : useUIStore.getState().input).trim();
+    const readyFiles = attachedFiles.filter(f => !f.loading && !f.error && f.content !== null);
+    if (!text && readyFiles.length === 0) return;
+
+    const fileParts = readyFiles.map(f => `\n\n--- ${f.file.name} ---\n${f.content}`).join("");
+    const fullText = text + fileParts;
+
+    clearInputForSession(currentSessionId);
+    clearFiles();
+    send(fullText);
+  }, [isGenerating, attachedFiles, clearInputForSession, currentSessionId, clearFiles, send]);
+
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       if (textareaRef.current) textareaRef.current.style.height = "auto";
-      onSent();
+      handleSend();
     }
   };
 
   const handleFileChange = (e) => {
-    if (e.target.files?.length) {
-      addFiles(e.target.files);
-    }
+    if (e.target.files?.length) addFiles(e.target.files);
   };
 
   return (
@@ -97,7 +117,7 @@ const ChatInput = () => {
         <button
           type="button"
           className="scroll-to-bottom-button"
-          onClick={() => scrollToBottom("smooth")}
+          onClick={() => scrollToBottom("smooth", messages.length)}
           aria-label="跳转到底部"
           title="跳转到底部"
         >
@@ -192,7 +212,7 @@ const ChatInput = () => {
                 className="icon-button send-button"
                 onClick={() => {
                   if (textareaRef.current) textareaRef.current.style.height = "auto";
-                  onSent();
+                  handleSend();
                 }}
                 title="发送"
               >

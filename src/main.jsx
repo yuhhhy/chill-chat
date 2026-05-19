@@ -4,12 +4,11 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
 import './components/ModelAvatar/ModelAvatar.css'
-import ContextProvider from './context/Context.jsx'
+import StoreSync from './stores/StoreSync.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <BrowserRouter>
-    <ContextProvider>
-      <App />
-    </ContextProvider>
+    <StoreSync />
+    <App />
   </BrowserRouter>
 )
