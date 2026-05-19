@@ -53,7 +53,7 @@ const ContextProvider = ({ children }) => {
     createNewSession, loadSession, deleteSession, updateSession
   } = useSessions();
 
-  const { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate, deleteChatMessage } = useChat({
+  const { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate, deleteChatMessage, updateChatMessage, sendEditedUserMessage } = useChat({
     currentSessionId,
     contextTurnCount,
     modelProvider,
@@ -158,6 +158,7 @@ const ContextProvider = ({ children }) => {
     regenerate,
     removeFile,
     scrollToBottom,
+    sendEditedUserMessage,
     sessions,
     setInput,
     setContextTurnCount,
@@ -166,6 +167,7 @@ const ContextProvider = ({ children }) => {
     setTheme,
     theme,
     toggleVoiceInput,
+    updateChatMessage,
     virtuosoRef,
     voiceError,
     voiceInputStatus,
@@ -194,12 +196,14 @@ const ContextProvider = ({ children }) => {
     regenerate,
     removeFile,
     scrollToBottom,
+    sendEditedUserMessage,
     sessions,
     setContextTurnCount,
     setModelProvider,
     setTheme,
     theme,
     toggleVoiceInput,
+    updateChatMessage,
     voiceError,
     voiceInputStatus,
     voiceTranscript

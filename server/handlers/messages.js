@@ -6,6 +6,26 @@ export function deleteMessage(req, res, { json, sessionId, messageId }) {
   json(res, { ok: true });
 }
 
+export async function updateMessage(req, res, { json, parseBody, sessionId, messageId }) {
+  try {
+    const { content } = await parseBody(req);
+    if (typeof content !== 'string') {
+      json(res, { error: 'content 必须是字符串' }, 400);
+      return;
+    }
+
+    const result = stmt.updateMessage.run(content, messageId, sessionId);
+    if (result.changes === 0) {
+      json(res, { error: '消息不存在' }, 404);
+      return;
+    }
+
+    json(res, { ok: true });
+  } catch (err) {
+    json(res, { error: err.message }, 400);
+  }
+}
+
 export function getMessages(req, res, { json, sessionId }) {
   json(res, stmt.listMessages.all(sessionId));
 }

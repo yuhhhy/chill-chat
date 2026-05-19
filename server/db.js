@@ -40,6 +40,7 @@ export const stmt = {
   listMessages:  db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC'),
   insertMessage: db.prepare('INSERT INTO messages (id, session_id, role, content, reasoning_content, model_provider, status) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   countMessages:  db.prepare('SELECT COUNT(*) as count FROM messages WHERE session_id = ?'),
+  updateMessage:  db.prepare('UPDATE messages SET content = ? WHERE id = ? AND session_id = ?'),
   deleteMessage:  db.prepare('DELETE FROM messages WHERE id = ? AND session_id = ?'),
 };
 

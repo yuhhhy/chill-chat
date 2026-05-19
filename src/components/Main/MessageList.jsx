@@ -3,6 +3,7 @@ import { Virtuoso } from "react-virtuoso";
 import { Context } from "../../context/Context";
 import MarkdownRenderer from "../MarkdownRenderer/MarkdownRenderer";
 import ModelAvatar from "../ModelAvatar/ModelAvatar";
+import MoreActionMenu from "../MoreActionMenu/MoreActionMenu";
 
 const CopyIcon = () => (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -17,24 +18,6 @@ const RegenerateIcon = () => (
     <path d="M6 3v4h4" />
     <path d="M4 13a8 8 0 0 0 14.1 5.1" />
     <path d="M18 21v-4h-4" />
-  </svg>
-);
-
-const TrashIcon = () => (
-  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 6h18" />
-    <path d="M8 6V4h8v2" />
-    <path d="M19 6l-1 14H6L5 6" />
-    <path d="M10 11v5" />
-    <path d="M14 11v5" />
-  </svg>
-);
-
-const MoreIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <circle cx="5" cy="12" r="2" />
-    <circle cx="12" cy="12" r="2" />
-    <circle cx="19" cy="12" r="2" />
   </svg>
 );
 
@@ -55,15 +38,59 @@ const ReasoningPanel = ({ content, isGenerating }) => {
 };
 
 const MessageRow = ({ message, isLastAI }) => {
-  const { deleteChatMessage, regenerate, isGenerating, modelNames } = useContext(Context);
+  const { deleteChatMessage, regenerate, isGenerating, modelNames, sendEditedUserMessage, updateChatMessage } = useContext(Context);
   const [copied, setCopied] = useState(false);
+  const [editText, setEditText] = useState(message.content);
+  const [isEditing, setIsEditing] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const messageProvider = message.modelProvider || 'deepseek';
   const isMessageGenerating = message.status === "generating";
+
+  const startEditing = () => {
+    setEditText(message.content);
+    setIsEditing(true);
+    setIsMoreOpen(false);
+  };
+
+  const cancelEditing = () => {
+    setEditText(message.content);
+    setIsEditing(false);
+  };
 
   const handleDelete = () => {
     setIsMoreOpen(false);
     deleteChatMessage(message.id);
+  };
+
+  const handleSaveEdit = async () => {
+    const nextContent = editText;
+    if (!nextContent.trim()) {
+      setIsEditing(false);
+      setEditText(message.content);
+      return;
+    }
+    if (message.role !== "user" && nextContent === message.content) {
+      setIsEditing(false);
+      setEditText(message.content);
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      if (message.role === "user") {
+        setIsEditing(false);
+        await sendEditedUserMessage(message.id, nextContent);
+      } else {
+        await updateChatMessage(message.id, nextContent);
+        setIsEditing(false);
+      }
+    } catch {
+      setEditText(message.content);
+      setIsEditing(true);
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
   const handleCopy = async () => {
@@ -79,39 +106,37 @@ const MessageRow = ({ message, isLastAI }) => {
   if (message.role === "user") {
     return (
       <div className="message-item user-message">
-        <div className="user-message-stack">
-          <div className="message-content">
-            <p>{message.content}</p>
-          </div>
-          <div className="action-bar user-action-bar">
-            <div
-              className="more-action"
-              onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) {
-                  setIsMoreOpen(false);
-                }
-              }}
-            >
-              <button
-                type="button"
-                className="more-action-button"
-                onClick={() => setIsMoreOpen(open => !open)}
-                title="更多操作"
-                aria-label="更多操作"
-                aria-expanded={isMoreOpen}
-              >
-                <MoreIcon />
-              </button>
-              {isMoreOpen && (
-                <div className="more-action-menu" role="menu">
-                  <button type="button" className="more-action-item danger" role="menuitem" onClick={handleDelete}>
-                    <TrashIcon />
-                    <span>删除</span>
+        <div className={`user-message-stack${isEditing ? " editing" : ""}`}>
+          <div className={`message-content${isEditing ? " editing" : ""}`}>
+            {isEditing ? (
+              <div className="message-edit-form">
+                <textarea
+                  value={editText}
+                  onChange={(event) => setEditText(event.target.value)}
+                  autoFocus
+                  rows={Math.min(Math.max(editText.split('\n').length, 2), 8)}
+                />
+                <div className="message-edit-actions">
+                  <button type="button" onClick={cancelEditing} disabled={isSavingEdit}>取消</button>
+                  <button type="button" className="primary" onClick={handleSaveEdit} disabled={isSavingEdit || isGenerating || !editText.trim()}>
+                    发送
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <p>{message.content}</p>
+            )}
           </div>
+          {!isEditing && <div className="action-bar user-action-bar">
+            <MoreActionMenu
+              align="right"
+              isOpen={isMoreOpen}
+              onClose={() => setIsMoreOpen(false)}
+              onDelete={handleDelete}
+              onEdit={startEditing}
+              onToggle={() => setIsMoreOpen(open => !open)}
+            />
+          </div>}
         </div>
       </div>
     );
@@ -120,12 +145,27 @@ const MessageRow = ({ message, isLastAI }) => {
   return (
     <div className="message-item ai-message">
       <ModelAvatar provider={messageProvider} className="message-avatar" />
-      <div className="message-content">
+      <div className={`message-content${isEditing ? " editing" : ""}`}>
         <ReasoningPanel
           content={message.reasoningContent}
           isGenerating={isMessageGenerating}
         />
-        {isMessageGenerating && !message.content ? (
+        {isEditing ? (
+          <div className="message-edit-form">
+            <textarea
+              value={editText}
+              onChange={(event) => setEditText(event.target.value)}
+              autoFocus
+              rows={Math.min(Math.max(editText.split('\n').length, 3), 12)}
+            />
+            <div className="message-edit-actions">
+              <button type="button" onClick={cancelEditing} disabled={isSavingEdit}>取消</button>
+              <button type="button" className="primary" onClick={handleSaveEdit} disabled={isSavingEdit || !editText.trim()}>
+                保存
+              </button>
+            </div>
+          </div>
+        ) : isMessageGenerating && !message.content ? (
           <div className="thinking-indicator">
             <div className="thinking-spinner" />
             <span>{message.reasoningContent ? "正在生成回复" : "思考中"}</span>
@@ -137,9 +177,8 @@ const MessageRow = ({ message, isLastAI }) => {
         )}
         {message.status === "aborted" && <p className="message-status aborted">— 已中断</p>}
         {message.status === "failed"  && <p className="message-status failed">生成失败，请重试</p>}
-        {!isMessageGenerating && (
-          <div className="message-action-block">
-            <div className="action-bar">
+        {!isMessageGenerating && !isEditing && (
+          <div className="action-bar">
               <button
                 type="button"
                 onClick={handleCopy}
@@ -159,34 +198,13 @@ const MessageRow = ({ message, isLastAI }) => {
                   <RegenerateIcon />
                 </button>
               )}
-              <div
-                className="more-action"
-                onBlur={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget)) {
-                    setIsMoreOpen(false);
-                  }
-                }}
-              >
-                <button
-                  type="button"
-                  className="more-action-button"
-                  onClick={() => setIsMoreOpen(open => !open)}
-                  title="更多操作"
-                  aria-label="更多操作"
-                  aria-expanded={isMoreOpen}
-                >
-                  <MoreIcon />
-                </button>
-                {isMoreOpen && (
-                  <div className="more-action-menu" role="menu">
-                    <button type="button" className="more-action-item danger" role="menuitem" onClick={handleDelete}>
-                      <TrashIcon />
-                      <span>删除</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+              <MoreActionMenu
+                isOpen={isMoreOpen}
+                onClose={() => setIsMoreOpen(false)}
+                onDelete={handleDelete}
+                onEdit={startEditing}
+                onToggle={() => setIsMoreOpen(open => !open)}
+              />
             {modelNames[messageProvider] && (
               <span className="action-model-name">{modelNames[messageProvider]}</span>
             )}

@@ -387,6 +387,12 @@ html[data-theme="dark"] .mic-button-icon {
     gap: 12px;
     align-items: flex-start;
     padding: 0 var(--chat-content-padding) 20px;
+    position: relative;
+    z-index: 1;
+}
+
+.message-item:focus-within {
+    z-index: 20;
 }
 
 .message-avatar {
@@ -426,6 +432,11 @@ html[data-theme="dark"] .mic-button-icon {
     max-width: 70%;
 }
 
+.user-message-stack.editing {
+    width: min(100%, 760px);
+    max-width: 100%;
+}
+
 .user-message .message-content {
     background-color: var(--surface-subtle);
     color: var(--text-primary);
@@ -442,6 +453,18 @@ html[data-theme="dark"] .mic-button-icon {
     line-height: 1.6;
     word-wrap: break-word;
     position: relative;
+}
+
+.message-content.editing {
+    max-width: 100%;
+}
+
+.ai-message .message-content.editing {
+    width: min(100%, 760px);
+}
+
+.user-message .message-content.editing {
+    width: 100%;
 }
 
 .message-content p {
@@ -665,27 +688,21 @@ html[data-theme="dark"] .mic-button-icon {
     font-style: italic;
 }
 
-.message-action-block {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: flex-start;
-    margin-top: 10px;
-}
-
 /* Action bar below messages */
 .action-bar {
     display: flex;
     align-items: center;
     gap: 2px;
+    margin-top: 10px;
 }
 
 .action-model-name {
-    margin-top: 2px;
+    margin-left: 6px;
     color: var(--text-muted);
     font-size: 13.5px;
     letter-spacing: 0.01em;
     user-select: none;
-    line-height: 1.35;
+    line-height: 28px;
 }
 
 .action-bar button {
@@ -718,42 +735,75 @@ html[data-theme="dark"] .mic-button-icon {
     cursor: not-allowed;
 }
 
-.more-action {
-    position: relative;
-    display: inline-flex;
+.message-edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(100%, 760px);
+    max-width: 100%;
 }
 
-.more-action-menu {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    right: 0;
-    min-width: 112px;
-    padding: 6px;
+.message-edit-form textarea {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 10px 12px;
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
     background: var(--surface-elevated);
-    box-shadow: var(--shadow-soft);
-    z-index: 5;
+    color: var(--text-primary);
+    font: inherit;
+    line-height: 1.55;
+    resize: none;
+    outline: none;
 }
 
-.ai-message .more-action-menu {
-    right: auto;
-    left: 0;
+.message-edit-form textarea:focus {
+    border-color: var(--accent);
 }
 
-.action-bar .more-action-item {
-    width: 100%;
-    height: 32px;
-    justify-content: flex-start;
+.message-edit-actions {
+    display: flex;
+    justify-content: flex-end;
     gap: 8px;
-    padding: 0 8px;
-    color: var(--text-secondary);
-    white-space: nowrap;
 }
 
-.action-bar .more-action-item.danger:hover {
-    background: color-mix(in srgb, var(--danger) 12%, transparent);
-    color: var(--danger);
+.message-edit-actions button {
+    min-width: 56px;
+    height: 34px;
+    padding: 0 14px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    background: var(--surface-elevated);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+}
+
+.message-edit-actions button:hover:not(:disabled) {
+    background: var(--surface-subtle);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+}
+
+.message-edit-actions button.primary {
+    border-color: #2f343b;
+    background: #2f343b;
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(31, 35, 40, 0.2);
+}
+
+.message-edit-actions button.primary:hover:not(:disabled) {
+    background: #1f2328;
+    border-color: #1f2328;
+    color: #fff;
+}
+
+.message-edit-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
 }
 
 .message-status {

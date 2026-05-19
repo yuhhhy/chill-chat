@@ -1,7 +1,7 @@
 import http from 'http';
 import dotenv from 'dotenv';
 import { getSessions, createSession, deleteSession } from './handlers/sessions.js';
-import { getMessages, addMessages, deleteMessage } from './handlers/messages.js';
+import { getMessages, addMessages, deleteMessage, updateMessage } from './handlers/messages.js';
 import { handleChatStream } from './handlers/chat.js';
 import { createChatRun, subscribeChatRun, cancelChatRun } from './handlers/chatRuns.js';
 import { getModelNames } from './providers/modelProviders.js';
@@ -29,7 +29,7 @@ function parseBody(req) {
 
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
@@ -77,6 +77,7 @@ const server = http.createServer((req, res) => {
   if (messageItemMatch) {
     const sessionId  = decodeURIComponent(messageItemMatch[1]);
     const messageId  = decodeURIComponent(messageItemMatch[2]);
+    if (req.method === 'PATCH')  return updateMessage(req, res, { ...ctx, sessionId, messageId });
     if (req.method === 'DELETE') return deleteMessage(req, res, { ...ctx, sessionId, messageId });
   }
 

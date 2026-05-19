@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchMessages, saveMessages, deleteMessage as deleteMessageApi } from '../api/messages.js';
+import { fetchMessages, saveMessages, updateMessage as updateMessageApi, deleteMessage as deleteMessageApi } from '../api/messages.js';
 import { createChatRun, cancelChatRun } from '../api/chatRuns.js';
 import StreamParser from '../services/streamParser.js';
 
@@ -369,5 +369,83 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
     }
   }, [currentSessionId, messages]);
 
-  return { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate, deleteChatMessage };
+  const updateChatMessage = useCallback(async (messageId, content) => {
+    if (!currentSessionId || !messageId) return;
+
+    const cachedMessages = sessionMessagesRef.current.get(currentSessionId);
+    const previousMessages = cachedMessages || messages;
+    const nextMessages = previousMessages.map(message =>
+      message.id === messageId ? { ...message, content } : message
+    );
+
+    setMessages(nextMessages);
+    if (cachedMessages) {
+      sessionMessagesRef.current.set(currentSessionId, nextMessages);
+    }
+
+    try {
+      await updateMessageApi(currentSessionId, messageId, content);
+    } catch (err) {
+      console.error('Failed to update message in DB:', err);
+      setMessages(previousMessages);
+      if (cachedMessages) {
+        sessionMessagesRef.current.set(currentSessionId, previousMessages);
+      }
+      throw err;
+    }
+  }, [currentSessionId, messages]);
+
+  const sendEditedUserMessage = useCallback(async (messageId, content) => {
+    if (!currentSessionId || !messageId || isGenerating) return;
+
+    const cachedMessages = sessionMessagesRef.current.get(currentSessionId);
+    const previousMessages = cachedMessages || messages;
+    const editedIndex = previousMessages.findIndex(message => message.id === messageId);
+    if (editedIndex === -1) return;
+
+    const editedMessage = { ...previousMessages[editedIndex], content, status: 'completed' };
+    const historyMessages = [
+      ...previousMessages.slice(0, editedIndex),
+      editedMessage
+    ];
+    const trailingMessages = previousMessages.slice(editedIndex + 1);
+
+    await updateMessageApi(currentSessionId, messageId, content);
+
+    trailingMessages.forEach(message => {
+      if (!message.id) return;
+      addPendingDeletedMessage(currentSessionId, message.id);
+      deleteMessageApi(currentSessionId, message.id)
+        .then(() => removePendingDeletedMessage(currentSessionId, message.id))
+        .catch(err => console.error('Failed to delete stale message from DB:', err));
+    });
+
+    setMessages(historyMessages);
+    if (cachedMessages) {
+      sessionMessagesRef.current.set(currentSessionId, historyMessages);
+    }
+    setIsGenerating(true);
+
+    const aiPlaceholder = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      modelProvider,
+      reasoningContent: '',
+      timestamp: new Date().toLocaleString(),
+      status: 'generating'
+    };
+    const withPlaceholder = [...historyMessages, aiPlaceholder];
+    setMessages(withPlaceholder);
+
+    await _runStream(
+      getMessagesWithContextTurnLimit(historyMessages, contextTurnCount).map(m => ({ role: m.role, content: m.content })),
+      withPlaceholder,
+      aiPlaceholder,
+      currentSessionId,
+      modelProvider
+    );
+  }, [currentSessionId, contextTurnCount, isGenerating, messages, modelProvider, _runStream]);
+
+  return { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate, deleteChatMessage, updateChatMessage, sendEditedUserMessage };
 }
