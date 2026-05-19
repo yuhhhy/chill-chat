@@ -2,7 +2,9 @@ import React, { useContext, useState } from 'react';
 import './SettingsModal.css';
 import { Context } from '../../context/Context';
 import ModelAvatar from '../ModelAvatar/ModelAvatar';
+import { EditIcon } from '../icons/ActionIcons';
 import { modelProviderOptions } from '../../config/modelProviders';
+import { createCustomModel, deleteCustomModel, updateCustomModel } from '../../api/modelConfig';
 
 const settingsItems = [
   { id: 'general', label: '通用设置' },
@@ -21,11 +23,26 @@ const contextTurnOptions = [
   { value: -1, label: '全部' }
 ];
 
+const emptyCustomModelForm = {
+  apiKey: '',
+  apiUrl: '',
+  label: '',
+  model: ''
+};
+
 const SettingsModal = ({ onClose }) => {
   const [activeSection, setActiveSection] = useState('general');
+  const [isCustomModelEditorOpen, setIsCustomModelEditorOpen] = useState(false);
+  const [customModelEditor, setCustomModelEditor] = useState(null);
+  const [customModelForm, setCustomModelForm] = useState(emptyCustomModelForm);
+  const [customModelError, setCustomModelError] = useState('');
+  const [isDeletingCustomModel, setIsDeletingCustomModel] = useState(false);
+  const [isSavingCustomModel, setIsSavingCustomModel] = useState(false);
   const {
     contextTurnCount,
+    customModels,
     modelProvider,
+    refreshModelConfig,
     setContextTurnCount,
     setModelProvider,
     setTheme,
@@ -37,6 +54,83 @@ const SettingsModal = ({ onClose }) => {
     0
   );
   const contextTurnLabel = contextTurnOptions[contextTurnIndex].label;
+  const customModelOptions = customModels.map((model) => ({
+    ...model,
+    tone: 'custom',
+    isCustom: true,
+    description: model.model || model.description
+  }));
+  const allModelOptions = [...modelProviderOptions, ...customModelOptions];
+
+  const openCustomModelEditor = (model = null) => {
+    setIsCustomModelEditorOpen(true);
+    setCustomModelEditor(model);
+    setCustomModelError('');
+    setCustomModelForm(model ? {
+      apiKey: '',
+      apiUrl: model.apiUrl || '',
+      label: model.label || '',
+      model: model.model || ''
+    } : emptyCustomModelForm);
+  };
+
+  const updateCustomModelField = (field, value) => {
+    setCustomModelForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const saveCustomModel = async (event) => {
+    event.preventDefault();
+    setIsSavingCustomModel(true);
+    setCustomModelError('');
+
+    try {
+      const updatedCustomModels = customModelEditor
+        ? await updateCustomModel(customModelEditor.id, customModelForm)
+        : await createCustomModel(customModelForm);
+
+      refreshModelConfig();
+      const savedModel = customModelEditor
+        ? updatedCustomModels.find((model) => model.id === customModelEditor.id)
+        : updatedCustomModels[updatedCustomModels.length - 1];
+
+      if (savedModel) setModelProvider(savedModel.id);
+      setIsCustomModelEditorOpen(false);
+      setCustomModelEditor(null);
+      setCustomModelForm(emptyCustomModelForm);
+    } catch (error) {
+      setCustomModelError(error.message || '保存失败');
+    } finally {
+      setIsSavingCustomModel(false);
+    }
+  };
+
+  const removeCustomModel = async () => {
+    if (!customModelEditor) return;
+
+    setIsDeletingCustomModel(true);
+    setCustomModelError('');
+
+    try {
+      await deleteCustomModel(customModelEditor.id);
+      refreshModelConfig();
+
+      if (modelProvider === customModelEditor.id) {
+        setModelProvider('deepseek');
+      }
+
+      setIsCustomModelEditorOpen(false);
+      setCustomModelEditor(null);
+      setCustomModelForm(emptyCustomModelForm);
+    } catch (error) {
+      setCustomModelError(error.message || '删除失败');
+    } finally {
+      setIsDeletingCustomModel(false);
+    }
+  };
+
+  const selectModelProvider = (modelId) => {
+    setModelProvider(modelId);
+  };
 
   return (
     <div className="settings-overlay" role="presentation" onMouseDown={onClose}>
@@ -147,22 +241,49 @@ const SettingsModal = ({ onClose }) => {
                   <p>调整应用的模型设置偏好。</p>
                 </div>
                 <div className="model-grid" role="radiogroup" aria-label="选择模型">
-                  {modelProviderOptions.map((model) => (
-                    <button
+                  {allModelOptions.map((model) => (
+                    <div
                       key={model.id}
-                      type="button"
                       className={`model-option ${modelProvider === model.id ? 'active' : ''}`}
-                      onClick={() => setModelProvider(model.id)}
+                      onClick={() => selectModelProvider(model.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          selectModelProvider(model.id);
+                        }
+                      }}
                       role="radio"
                       aria-checked={modelProvider === model.id}
+                      tabIndex={0}
                     >
+                      {model.isCustom ? (
+                        <button
+                          type="button"
+                          className="custom-model-edit"
+                          aria-label={`编辑 ${model.label}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openCustomModelEditor(model);
+                          }}
+                        >
+                          <EditIcon />
+                        </button>
+                      ) : null}
                       <ModelAvatar provider={model.id} className="model-option-avatar" />
                       <span className="model-option-copy">
                         <span className="model-option-name">{model.label}</span>
                         <span className="model-option-description">{model.description}</span>
                       </span>
-                    </button>
+                    </div>
                   ))}
+                  <button
+                    type="button"
+                    className="model-option model-option-add"
+                    onClick={() => openCustomModelEditor()}
+                    aria-label="添加自定义模型"
+                  >
+                    <span className="model-add-icon" aria-hidden="true">+</span>
+                  </button>
                 </div>
               </>
             ) : (
@@ -174,6 +295,111 @@ const SettingsModal = ({ onClose }) => {
           </main>
         </div>
       </section>
+
+      {isCustomModelEditorOpen ? (
+        <section
+          className="custom-model-editor"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="custom-model-editor-title"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <form className="custom-model-form" onSubmit={saveCustomModel}>
+            <div className="custom-model-form-heading">
+              <h3 id="custom-model-editor-title">
+                {customModelEditor ? '编辑自定义模型' : '添加自定义模型'}
+              </h3>
+              <button
+                type="button"
+                className="settings-close"
+                onClick={() => {
+                  setIsCustomModelEditorOpen(false);
+                  setCustomModelEditor(null);
+                  setCustomModelForm(emptyCustomModelForm);
+                }}
+                aria-label="关闭自定义模型编辑"
+              >
+                ×
+              </button>
+            </div>
+
+            <label className="custom-model-field">
+              <span>显示名称</span>
+              <input
+                type="text"
+                value={customModelForm.label}
+                onChange={(event) => updateCustomModelField('label', event.target.value)}
+                placeholder="例如：本地 Qwen"
+                autoFocus
+              />
+            </label>
+
+            <label className="custom-model-field">
+              <span>API 地址</span>
+              <input
+                type="url"
+                value={customModelForm.apiUrl}
+                onChange={(event) => updateCustomModelField('apiUrl', event.target.value)}
+                placeholder="https://api.example.com/v1"
+              />
+            </label>
+
+            <label className="custom-model-field">
+              <span>模型 ID</span>
+              <input
+                type="text"
+                value={customModelForm.model}
+                onChange={(event) => updateCustomModelField('model', event.target.value)}
+                placeholder="例如：gpt-4o-mini"
+              />
+            </label>
+
+            <label className="custom-model-field">
+              <span>API key</span>
+              <input
+                type="password"
+                value={customModelForm.apiKey}
+                onChange={(event) => updateCustomModelField('apiKey', event.target.value)}
+                placeholder={customModelEditor ? '留空则保留当前 key' : 'sk-...'}
+              />
+            </label>
+
+            {customModelError ? <p className="custom-model-error">{customModelError}</p> : null}
+
+            <div className="custom-model-actions">
+              <span className="custom-model-action-start">
+                {customModelEditor ? (
+                  <button
+                    type="button"
+                    className="custom-model-danger"
+                    onClick={removeCustomModel}
+                    disabled={isDeletingCustomModel || isSavingCustomModel}
+                  >
+                    {isDeletingCustomModel ? '删除中' : '删除'}
+                  </button>
+                ) : null}
+              </span>
+              <span className="custom-model-action-end">
+                <button
+                  type="button"
+                  className="custom-model-secondary"
+                  disabled={isDeletingCustomModel || isSavingCustomModel}
+                  onClick={() => {
+                    setIsCustomModelEditorOpen(false);
+                    setCustomModelEditor(null);
+                    setCustomModelForm(emptyCustomModelForm);
+                  }}
+                >
+                  取消
+                </button>
+                <button type="submit" className="custom-model-primary" disabled={isSavingCustomModel || isDeletingCustomModel}>
+                  {isSavingCustomModel ? '保存中' : '保存'}
+                </button>
+              </span>
+            </div>
+          </form>
+        </section>
+      ) : null}
     </div>
   );
 };

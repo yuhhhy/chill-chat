@@ -97,9 +97,12 @@ CLAUDE_API_TYPE=claude
 CLAUDE_API_KEY=your_claude_api_key_here
 CLAUDE_MODEL=claude-3-5-haiku-latest
 CLAUDE_API_VERSION=2023-06-01
+
+CUSTOM_MODELS=[]
 ```
 
 默认前端模型是 DeepSeek。只使用某一个供应商时，只需要配置对应的 `*_API_KEY` 和 `*_MODEL`。
+也可以在“模型设置”里添加自定义模型，自定义模型会以 OpenAI-compatible Chat Completions 格式调用，并写入 `.env` 的 `CUSTOM_MODELS`。API 地址只需要填到 `/v1`，应用会自动补全 `/chat/completions`；已填写完整路径也兼容。
 
 ### 启动
 
