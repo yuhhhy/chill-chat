@@ -7,14 +7,15 @@ import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
 
 const Main = () => {
-  const { isGenerating, isLoadingMessages, messages, scrollToBottom } = useContext(Context);
+  const { isAtBottom, isGenerating, isLoadingMessages, messages, scrollToBottom } = useContext(Context);
 
   const showResult = messages.length > 0;
 
   useEffect(() => {
     if (messages.length === 0) return;
+    if (!isAtBottom) return;
     scrollToBottom(isGenerating ? "auto" : "smooth");
-  }, [isGenerating, messages.length, scrollToBottom]);
+  }, [isAtBottom, isGenerating, messages.length, scrollToBottom]);
 
   return (
     <div className="main">

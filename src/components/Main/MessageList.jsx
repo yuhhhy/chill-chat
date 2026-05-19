@@ -226,7 +226,7 @@ const MessageList = () => {
           ref={virtuosoRef}
           className="chat-virtuoso"
           data={messages}
-          followOutput={isAtBottom ? "auto" : false}
+          followOutput={(atBottom) => atBottom ? "auto" : false}
           itemContent={(index, message) => (
             <MessageRow
               key={message.id || index}
