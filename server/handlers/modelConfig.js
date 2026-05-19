@@ -1,18 +1,14 @@
 import fs from 'fs';
 import path from 'path';
-import { getPublicCustomModels, saveCustomModels } from '../providers/modelProviders.js';
+import { getPublicCustomModels, saveCustomModels } from '../providers/customModels.js';
 
 const ENV_PATH = path.join(process.cwd(), '.env');
 
-function normalizeTextValue(value) {
-  return String(value || '').trim();
-}
-
 function validateCustomModel(input, existingModel = null) {
-  const label = normalizeTextValue(input.label);
-  const apiUrl = normalizeTextValue(input.apiUrl);
-  const model = normalizeTextValue(input.model);
-  const apiKey = normalizeTextValue(input.apiKey);
+  const label = String(input.label || '').trim();
+  const apiUrl = String(input.apiUrl || '').trim();
+  const model = String(input.model || '').trim();
+  const apiKey = String(input.apiKey || '').trim();
 
   if (!label) return { error: '模型名称不能为空' };
   if (!apiUrl) return { error: 'API 地址不能为空' };
@@ -69,9 +65,7 @@ function writeEnvValues(values) {
 
   for (const [key, value] of Object.entries(values)) {
     if (!seen.has(key)) {
-      if (nextLines.length > 0 && nextLines[nextLines.length - 1] !== '') {
-        nextLines.push('');
-      }
+      if (nextLines.length > 0 && nextLines[nextLines.length - 1] !== '') nextLines.push('');
       nextLines.push(`${key}=${quoteEnvValue(value)}`);
     }
   }
@@ -80,71 +74,55 @@ function writeEnvValues(values) {
 }
 
 function persistCustomModels(models) {
-  const serialized = JSON.stringify(models);
-  writeEnvValues({ CUSTOM_MODELS: serialized });
+  writeEnvValues({ CUSTOM_MODELS: JSON.stringify(models) });
   saveCustomModels(models);
 }
 
-export function getCustomModels(_req, res, { json }) {
-  json(res, { customModels: getPublicCustomModels() });
+export function getCustomModels(req, res) {
+  res.json({ customModels: getPublicCustomModels() });
 }
 
-export async function createCustomModel(req, res, { json, parseBody }) {
-  try {
-    const body = await parseBody(req);
-    const validated = validateCustomModel(body);
-
-    if (validated.error) {
-      json(res, { error: validated.error }, 400);
-      return;
-    }
-
-    const models = [...getPublicCustomModels({ includeApiKey: true }), validated.value];
-    persistCustomModels(models);
-    json(res, { customModels: getPublicCustomModels() }, 201);
-  } catch (error) {
-    json(res, { error: error.message || '保存自定义模型失败' }, 400);
+export function createCustomModel(req, res) {
+  const validated = validateCustomModel(req.body);
+  if (validated.error) {
+    res.status(400).json({ error: validated.error });
+    return;
   }
+
+  const models = [...getPublicCustomModels({ includeApiKey: true }), validated.value];
+  persistCustomModels(models);
+  res.status(201).json({ customModels: getPublicCustomModels() });
 }
 
-export async function updateCustomModel(req, res, { customModelId, json, parseBody }) {
-  try {
-    const body = await parseBody(req);
-    const models = getPublicCustomModels({ includeApiKey: true });
-    const index = models.findIndex((model) => model.id === customModelId);
+export function updateCustomModel(req, res) {
+  const models = getPublicCustomModels({ includeApiKey: true });
+  const index = models.findIndex((m) => m.id === req.params.customModelId);
 
-    if (index === -1) {
-      json(res, { error: '自定义模型不存在' }, 404);
-      return;
-    }
-
-    const validated = validateCustomModel(body, models[index]);
-    if (validated.error) {
-      json(res, { error: validated.error }, 400);
-      return;
-    }
-
-    models[index] = validated.value;
-    persistCustomModels(models);
-    json(res, { customModels: getPublicCustomModels() });
-  } catch (error) {
-    json(res, { error: error.message || '保存自定义模型失败' }, 400);
+  if (index === -1) {
+    res.status(404).json({ error: '自定义模型不存在' });
+    return;
   }
+
+  const validated = validateCustomModel(req.body, models[index]);
+  if (validated.error) {
+    res.status(400).json({ error: validated.error });
+    return;
+  }
+
+  models[index] = validated.value;
+  persistCustomModels(models);
+  res.json({ customModels: getPublicCustomModels() });
 }
 
-export function deleteCustomModel(_req, res, { customModelId, json }) {
-  try {
-    const models = getPublicCustomModels({ includeApiKey: true });
-    const nextModels = models.filter((model) => model.id !== customModelId);
+export function deleteCustomModel(req, res) {
+  const models = getPublicCustomModels({ includeApiKey: true });
+  const nextModels = models.filter((m) => m.id !== req.params.customModelId);
 
-    if (nextModels.length === models.length) {
-      json(res, { error: '自定义模型不存在' }, 404);
-      return;
-    }
-
-    persistCustomModels(nextModels);
-    json(res, { customModels: getPublicCustomModels() });
-  } catch (error) {
-    json(res, { error: error.message || '删除自定义模型失败' }, 400);
+  if (nextModels.length === models.length) {
+    res.status(404).json({ error: '自定义模型不存在' });
+    return;
   }
+
+  persistCustomModels(nextModels);
+  res.json({ customModels: getPublicCustomModels() });
 }

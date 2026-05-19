@@ -1,32 +1,27 @@
 import { runManager } from '../runs/runManager.js';
 
-export async function createChatRun(req, res, { json, parseBody }) {
-  try {
-    const { messages, provider, ragCollectionId } = await parseBody(req);
-    if (!Array.isArray(messages)) {
-      json(res, { error: 'messages 必须是数组' }, 400);
-      return;
-    }
-
-    const run = runManager.createRun(messages, provider, { ragCollectionId });
-    json(res, { runId: run.id, status: run.status });
-  } catch {
-    json(res, { error: '请求格式错误' }, 400);
-  }
-}
-
-export function subscribeChatRun(req, res, { runId }) {
-  const url = new URL(req.url, 'http://localhost');
-  const after = Number(url.searchParams.get('after') || req.headers['last-event-id'] || 0);
-  runManager.subscribeRun(runId, after, req, res);
-}
-
-export function cancelChatRun(_req, res, { json, runId }) {
-  const run = runManager.cancelRun(runId);
-  if (!run) {
-    json(res, { error: '生成任务不存在或已过期' }, 404);
+export function createChatRun(req, res) {
+  const { messages, provider, ragCollectionId } = req.body;
+  if (!Array.isArray(messages)) {
+    res.status(400).json({ error: 'messages 必须是数组' });
     return;
   }
 
-  json(res, { runId, status: run.status });
+  const run = runManager.createRun(messages, provider, { ragCollectionId });
+  res.json({ runId: run.id, status: run.status });
+}
+
+export function subscribeChatRun(req, res) {
+  const after = Number(req.query.after || req.headers['last-event-id'] || 0);
+  runManager.subscribeRun(req.params.runId, after, req, res);
+}
+
+export function cancelChatRun(req, res) {
+  const run = runManager.cancelRun(req.params.runId);
+  if (!run) {
+    res.status(404).json({ error: '生成任务不存在或已过期' });
+    return;
+  }
+
+  res.json({ runId: req.params.runId, status: run.status });
 }
