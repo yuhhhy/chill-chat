@@ -37,6 +37,25 @@ const ReasoningPanel = ({ content, isGenerating }) => {
   );
 };
 
+const SourcePanel = ({ sources = [] }) => {
+  if (!sources.length) return null;
+
+  return (
+    <div className="source-panel" aria-label="引用来源">
+      {sources.map((source, index) => (
+        <details className="source-chip" key={source.id || source.chunkId || index}>
+          <summary>
+            <span className="source-number">[{source.order || index + 1}]</span>
+            <span className="source-name">{source.documentName}</span>
+            <span className="source-score">{Math.round((source.score || 0) * 100)}%</span>
+          </summary>
+          <p>{source.excerpt}</p>
+        </details>
+      ))}
+    </div>
+  );
+};
+
 const MessageRow = ({ message, isLastAI }) => {
   const { deleteChatMessage, regenerate, isGenerating, modelNames, sendEditedUserMessage, updateChatMessage } = useContext(Context);
   const [copied, setCopied] = useState(false);
@@ -175,6 +194,7 @@ const MessageRow = ({ message, isLastAI }) => {
             <MarkdownRenderer content={message.content} />
           </div>
         )}
+        {!isEditing && <SourcePanel sources={message.sources} />}
         {message.status === "aborted" && (
           <div className="message-status aborted" role="status">已中断</div>
         )}

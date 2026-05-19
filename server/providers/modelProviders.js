@@ -192,10 +192,12 @@ function handleUpstreamError(upstreamRes, res, label) {
 }
 
 function mapGeminiMessages(messages) {
-  return messages.map((message) => ({
-    role: message.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: message.content }]
-  }));
+  return messages
+    .filter(message => message.role !== 'system')
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: message.content }]
+    }));
 }
 
 function mapClaudeMessages(messages) {
@@ -205,6 +207,13 @@ function mapClaudeMessages(messages) {
       role: message.role,
       content: message.content
     }));
+}
+
+function getSystemPrompt(messages) {
+  return messages
+    .filter(message => message.role === 'system')
+    .map(message => message.content)
+    .join('\n\n');
 }
 
 function streamOpenAiCompatible(messages, res, config) {
@@ -255,6 +264,10 @@ function streamGemini(messages, res, config) {
       temperature: 0.7
     }
   };
+  const systemPrompt = getSystemPrompt(messages);
+  if (systemPrompt) {
+    requestBody.systemInstruction = { parts: [{ text: systemPrompt }] };
+  }
 
   const upstream = requestJsonStream({
     url,
@@ -318,6 +331,10 @@ function streamClaude(messages, res, config) {
     temperature: 0.7,
     stream: true
   };
+  const systemPrompt = getSystemPrompt(messages);
+  if (systemPrompt) {
+    requestBody.system = systemPrompt;
+  }
 
   const upstream = requestJsonStream({
     url: config.apiUrl,

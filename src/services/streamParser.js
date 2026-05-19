@@ -227,6 +227,13 @@ class StreamParser {
       return;
     }
 
+    if (event.type === 'sources') {
+      if (this.currentOnChunk) {
+        this.currentOnChunk({ type: 'sources', sources: data.sources || [] });
+      }
+      return;
+    }
+
     if (event.type === 'done') {
       this.terminalEventReceived = true;
       this.markStreamDone(onComplete);

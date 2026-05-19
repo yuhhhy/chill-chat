@@ -4,12 +4,14 @@ import { useChat } from "../hooks/useChat.js";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
 import { useFileAttachment } from "../hooks/useFileAttachment.js";
 import { fetchCustomModels } from "../api/modelConfig.js";
+import { fetchRagCollections } from "../api/rag.js";
 
 export const Context = createContext();
 
 const MODEL_PROVIDER_STORAGE_KEY = "chill-chat:model-provider";
 const THEME_STORAGE_KEY = "chill-chat:theme";
 const CONTEXT_TURN_COUNT_STORAGE_KEY = "chill-chat:context-turn-count";
+const RAG_COLLECTION_STORAGE_KEY = "chill-chat:rag-collection";
 const DEFAULT_MODEL_PROVIDER = "deepseek";
 const DEFAULT_THEME = "light";
 const DEFAULT_CONTEXT_TURN_COUNT = 5;
@@ -34,6 +36,11 @@ const ContextProvider = ({ children }) => {
   });
   const [modelNames, setModelNames] = useState({});
   const [customModels, setCustomModels] = useState([]);
+  const [ragCollections, setRagCollections] = useState([]);
+  const [selectedRagCollectionId, setSelectedRagCollectionIdState] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(RAG_COLLECTION_STORAGE_KEY) || "";
+  });
   const virtuosoRef = useRef(null);
   const inputDraftsRef = useRef(new Map()); // sessionId -> draft text
   const prevSessionIdRef = useRef(null);
@@ -48,9 +55,29 @@ const ContextProvider = ({ children }) => {
       .catch(() => {});
   }, []);
 
+  const refreshRagCollections = useCallback(() => {
+    return fetchRagCollections()
+      .then((collections) => {
+        setRagCollections(collections);
+        setSelectedRagCollectionIdState((current) => {
+          if (!current || collections.some(collection => collection.id === current)) return current;
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem(RAG_COLLECTION_STORAGE_KEY);
+          }
+          return "";
+        });
+        return collections;
+      })
+      .catch(() => []);
+  }, []);
+
   useEffect(() => {
     refreshModelConfig();
   }, [refreshModelConfig]);
+
+  useEffect(() => {
+    refreshRagCollections();
+  }, [refreshRagCollections]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -67,6 +94,7 @@ const ContextProvider = ({ children }) => {
     contextTurnCount,
     customModels,
     modelProvider,
+    ragCollectionId: selectedRagCollectionId,
     onSessionUpdated: updateSession
   });
 
@@ -110,6 +138,17 @@ const ContextProvider = ({ children }) => {
     setContextTurnCountState(turnCount);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(CONTEXT_TURN_COUNT_STORAGE_KEY, String(turnCount));
+    }
+  }, []);
+
+  const setSelectedRagCollectionId = useCallback((collectionId) => {
+    setSelectedRagCollectionIdState(collectionId);
+    if (typeof window !== "undefined") {
+      if (collectionId) {
+        window.localStorage.setItem(RAG_COLLECTION_STORAGE_KEY, collectionId);
+      } else {
+        window.localStorage.removeItem(RAG_COLLECTION_STORAGE_KEY);
+      }
     }
   }, []);
 
@@ -169,13 +208,17 @@ const ContextProvider = ({ children }) => {
     regenerate,
     removeFile,
     refreshModelConfig,
+    refreshRagCollections,
+    ragCollections,
     scrollToBottom,
     sendEditedUserMessage,
     sessions,
+    selectedRagCollectionId,
     setInput,
     setContextTurnCount,
     setIsAtBottom,
     setModelProvider,
+    setSelectedRagCollectionId,
     setTheme,
     theme,
     toggleVoiceInput,
@@ -209,11 +252,15 @@ const ContextProvider = ({ children }) => {
     regenerate,
     removeFile,
     refreshModelConfig,
+    refreshRagCollections,
+    ragCollections,
     scrollToBottom,
     sendEditedUserMessage,
     sessions,
+    selectedRagCollectionId,
     setContextTurnCount,
     setModelProvider,
+    setSelectedRagCollectionId,
     setTheme,
     theme,
     toggleVoiceInput,

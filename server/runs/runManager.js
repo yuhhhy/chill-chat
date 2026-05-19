@@ -1,5 +1,6 @@
 import { Writable } from 'stream';
 import { streamChat } from '../providers/modelProviders.js';
+import { buildRagContext } from '../rag/store.js';
 
 const RUN_TTL_MS = 30 * 60 * 1000;
 const HEARTBEAT_MS = 15000;
@@ -26,11 +27,13 @@ function terminalStatusForEvent(type) {
   return null;
 }
 
-function createRun(messages, provider) {
+function createRun(messages, provider, options = {}) {
   const run = {
     id: crypto.randomUUID(),
     messages,
     provider,
+    ragCollectionId: options.ragCollectionId || '',
+    sources: [],
     status: 'running',
     events: [],
     subscribers: new Set(),
@@ -152,7 +155,7 @@ class RunWritable extends Writable {
   }
 }
 
-function startRun(run) {
+async function startRun(run) {
   const sink = new RunWritable(run);
   sink.on('finish', () => {
     if (run.status === 'running') appendEvent(run, 'done');
@@ -161,7 +164,20 @@ function startRun(run) {
     if (run.status === 'running') appendEvent(run, 'error', { message: error.message });
   });
 
-  run.upstream = streamChat(run.messages, sink, run.provider);
+  try {
+    let messages = run.messages;
+    if (run.ragCollectionId) {
+      const rag = await buildRagContext(run.ragCollectionId, run.messages);
+      messages = rag.messages;
+      run.sources = rag.sources;
+      appendEvent(run, 'sources', { sources: run.sources });
+    }
+
+    if (run.status !== 'running') return;
+    run.upstream = streamChat(messages, sink, run.provider);
+  } catch (error) {
+    appendEvent(run, 'error', { message: error.message });
+  }
 }
 
 function subscribeRun(runId, afterEventId, req, res) {

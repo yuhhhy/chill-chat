@@ -12,6 +12,7 @@ function toViewMessage(m) {
     content: m.content,
     modelProvider: m.model_provider || 'deepseek',
     reasoningContent: m.reasoning_content || '',
+    sources: Array.isArray(m.sources) ? m.sources : [],
     timestamp: new Date(m.created_at * 1000).toLocaleString(),
     status: m.status || 'completed'
   };
@@ -75,7 +76,7 @@ function getMessagesWithContextTurnLimit(messages, contextTurnCount) {
   return messages.slice(keepFromMessageIndex);
 }
 
-export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider = 'deepseek', onSessionUpdated }) {
+export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider = 'deepseek', ragCollectionId = '', onSessionUpdated }) {
   const [messages, setMessages] = useState([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -138,9 +139,10 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
   }, [currentSessionId]);
 
   // Core streaming logic — shared by send() and regenerate()
-  const _runStream = useCallback(async (apiMessages, stateWithPlaceholder, aiMessagePlaceholder, capturedSessionId, provider) => {
+  const _runStream = useCallback(async (apiMessages, stateWithPlaceholder, aiMessagePlaceholder, capturedSessionId, provider, selectedRagCollectionId = '') => {
     let streamedContent = '';
     let streamedReasoningContent = '';
+    let retrievedSources = [];
 
     generatingSessionsRef.current.add(capturedSessionId);
     sessionMessagesRef.current.set(capturedSessionId, stateWithPlaceholder);
@@ -169,7 +171,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
     };
 
     try {
-      const { runId } = await createChatRun(apiMessages, provider);
+      const { runId } = await createChatRun(apiMessages, provider, selectedRagCollectionId);
       parser.runId = runId;
 
       await parser.fetchRunEvents(
@@ -180,13 +182,20 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
 
           if (chunkType === 'reasoning') {
             streamedReasoningContent += chunkContent;
+          } else if (chunkType === 'sources') {
+            retrievedSources = Array.isArray(chunk.sources) ? chunk.sources : [];
+            syncMessages(prev => prev.map(msg =>
+              msg.id === aiMessagePlaceholder.id
+                ? { ...msg, sources: retrievedSources }
+                : msg
+            ));
           } else {
             streamedContent += chunkContent;
           }
 
           syncMessages(prev => prev.map(msg =>
             msg.id === aiMessagePlaceholder.id
-              ? { ...msg, content: streamedContent, reasoningContent: streamedReasoningContent }
+              ? { ...msg, content: streamedContent, reasoningContent: streamedReasoningContent, sources: retrievedSources }
               : msg
           ));
         },
@@ -194,7 +203,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
           console.error('Stream error:', error);
           const failed = stateWithPlaceholder.map(msg =>
             msg.id === aiMessagePlaceholder.id
-              ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试', reasoningContent: streamedReasoningContent }
+              ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试', reasoningContent: streamedReasoningContent, sources: retrievedSources }
               : msg
           );
           finishGeneration();
@@ -204,7 +213,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
           if (!streamedContent.trim()) {
             const failed = stateWithPlaceholder.map(msg =>
               msg.id === aiMessagePlaceholder.id
-                ? { ...msg, status: 'failed', content: '生成失败，请重试', reasoningContent: streamedReasoningContent }
+                ? { ...msg, status: 'failed', content: '生成失败，请重试', reasoningContent: streamedReasoningContent, sources: retrievedSources }
                 : msg
             );
             finishGeneration();
@@ -214,7 +223,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
 
           const completed = stateWithPlaceholder.map(msg =>
             msg.id === aiMessagePlaceholder.id
-              ? { ...msg, status: 'completed', content: streamedContent, reasoningContent: streamedReasoningContent }
+              ? { ...msg, status: 'completed', content: streamedContent, reasoningContent: streamedReasoningContent, sources: retrievedSources }
               : msg
           );
           finishGeneration();
@@ -226,13 +235,14 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
             content: streamedContent,
             reasoningContent: streamedReasoningContent,
             modelProvider: provider,
+            sources: retrievedSources,
             status: 'completed'
           }]);
         },
         () => {
           const aborted = stateWithPlaceholder.map(msg =>
             msg.id === aiMessagePlaceholder.id
-              ? { ...msg, status: 'aborted', content: streamedContent, reasoningContent: streamedReasoningContent }
+              ? { ...msg, status: 'aborted', content: streamedContent, reasoningContent: streamedReasoningContent, sources: retrievedSources }
               : msg
           );
           finishGeneration();
@@ -244,7 +254,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
       console.error('Error:', error);
       const failed = stateWithPlaceholder.map(msg =>
         msg.id === aiMessagePlaceholder.id
-          ? { ...msg, status: 'failed', content: '生成失败，请重试', reasoningContent: streamedReasoningContent }
+          ? { ...msg, status: 'failed', content: '生成失败，请重试', reasoningContent: streamedReasoningContent, sources: retrievedSources }
           : msg
       );
       finishGeneration();
@@ -274,6 +284,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
       content: '',
       modelProvider,
       reasoningContent: '',
+      sources: [],
       timestamp: new Date().toLocaleString(),
       status: 'generating'
     };
@@ -285,9 +296,10 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
       messagesWithAI,
       aiMessage,
       currentSessionId,
-      modelProvider
+      modelProvider,
+      ragCollectionId
     );
-  }, [messages, currentSessionId, contextTurnCount, modelProvider, onSessionUpdated, _runStream]);
+  }, [messages, currentSessionId, contextTurnCount, modelProvider, ragCollectionId, onSessionUpdated, _runStream]);
 
   const regenerate = useCallback(async () => {
     if (isGenerating) return;
@@ -309,6 +321,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
       content: '',
       modelProvider,
       reasoningContent: '',
+      sources: [],
       timestamp: new Date().toLocaleString(),
       status: 'generating'
     };
@@ -320,9 +333,10 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
       withPlaceholder,
       aiPlaceholder,
       currentSessionId,
-      modelProvider
+      modelProvider,
+      ragCollectionId
     );
-  }, [messages, currentSessionId, contextTurnCount, isGenerating, modelProvider, _runStream]);
+  }, [messages, currentSessionId, contextTurnCount, isGenerating, modelProvider, ragCollectionId, _runStream]);
 
   const abortGeneration = useCallback(() => {
     const sid = currentSessionIdRef.current;
@@ -432,6 +446,7 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
       content: '',
       modelProvider,
       reasoningContent: '',
+      sources: [],
       timestamp: new Date().toLocaleString(),
       status: 'generating'
     };
@@ -443,9 +458,10 @@ export function useChat({ currentSessionId, contextTurnCount = 5, modelProvider 
       withPlaceholder,
       aiPlaceholder,
       currentSessionId,
-      modelProvider
+      modelProvider,
+      ragCollectionId
     );
-  }, [currentSessionId, contextTurnCount, isGenerating, messages, modelProvider, _runStream]);
+  }, [currentSessionId, contextTurnCount, isGenerating, messages, modelProvider, ragCollectionId, _runStream]);
 
   return { messages, isLoadingMessages, isGenerating, send, abortGeneration, regenerate, deleteChatMessage, updateChatMessage, sendEditedUserMessage };
 }

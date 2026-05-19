@@ -16,6 +16,13 @@ const MicIcon = () => (
   </svg>
 );
 
+const BookIcon = () => (
+  <svg className="input-action-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.05" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+    <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z" />
+  </svg>
+);
+
 const SendIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="30" height="30" fill="none">
     <circle cx="12" cy="12" r="12" fill="var(--accent)" />
@@ -43,9 +50,12 @@ const ChatInput = () => {
     messages,
     onSent,
     openFilePicker,
+    ragCollections,
     removeFile,
     scrollToBottom,
+    selectedRagCollectionId,
     setInput,
+    setSelectedRagCollectionId,
     toggleVoiceInput,
     voiceError,
     voiceInputStatus,
@@ -134,6 +144,24 @@ const ChatInput = () => {
           placeholder="给 chillAI 发送消息"
         />
         <div className="search-actions">
+          <label
+            className={`rag-select ${selectedRagCollectionId ? "active" : ""}`}
+            title={selectedRagCollectionId ? "当前聊天使用已选择的 RAG 知识库" : "选择 RAG 知识库"}
+          >
+            <BookIcon />
+            <select
+              value={selectedRagCollectionId}
+              onChange={(event) => setSelectedRagCollectionId(event.target.value)}
+              aria-label="选择 RAG 知识库"
+            >
+              <option value="">无知识库</option>
+              {ragCollections.map(collection => (
+                <option value={collection.id} key={collection.id}>
+                  {collection.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             className="icon-button input-action-button attachment-button"

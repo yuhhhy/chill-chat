@@ -18,6 +18,56 @@ db.exec(`
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
   );
+  CREATE TABLE IF NOT EXISTS rag_collections (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+  CREATE TABLE IF NOT EXISTS rag_documents (
+    id TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT NOT NULL DEFAULT '',
+    chunk_count INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    FOREIGN KEY (collection_id) REFERENCES rag_collections(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS rag_chunks (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    collection_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    char_count INTEGER NOT NULL,
+    embedding TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    FOREIGN KEY (document_id) REFERENCES rag_documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (collection_id) REFERENCES rag_collections(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS message_sources (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    chunk_id TEXT,
+    citation_order INTEGER NOT NULL,
+    score REAL NOT NULL,
+    collection_id TEXT NOT NULL DEFAULT '',
+    document_id TEXT NOT NULL DEFAULT '',
+    document_name TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL DEFAULT 0,
+    excerpt TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_rag_documents_collection ON rag_documents(collection_id);
+  CREATE INDEX IF NOT EXISTS idx_rag_chunks_collection ON rag_chunks(collection_id);
+  CREATE INDEX IF NOT EXISTS idx_rag_chunks_document ON rag_chunks(document_id);
+  CREATE INDEX IF NOT EXISTS idx_message_sources_message ON message_sources(message_id);
 `);
 
 const messageColumns = db.prepare('PRAGMA table_info(messages)').all().map(column => column.name);
@@ -42,6 +92,11 @@ export const stmt = {
   countMessages:  db.prepare('SELECT COUNT(*) as count FROM messages WHERE session_id = ?'),
   updateMessage:  db.prepare('UPDATE messages SET content = ? WHERE id = ? AND session_id = ?'),
   deleteMessage:  db.prepare('DELETE FROM messages WHERE id = ? AND session_id = ?'),
+  listMessageSources: db.prepare('SELECT * FROM message_sources WHERE message_id = ? ORDER BY citation_order ASC'),
+  insertMessageSource: db.prepare(`INSERT INTO message_sources (
+    id, message_id, chunk_id, citation_order, score, collection_id, document_id, document_name, chunk_index, excerpt
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  deleteMessageSources: db.prepare('DELETE FROM message_sources WHERE message_id = ?'),
 };
 
 export default db;

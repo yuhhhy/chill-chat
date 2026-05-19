@@ -5,6 +5,16 @@ import { getMessages, addMessages, deleteMessage, updateMessage } from './handle
 import { handleChatStream } from './handlers/chat.js';
 import { createChatRun, subscribeChatRun, cancelChatRun } from './handlers/chatRuns.js';
 import { createCustomModel, deleteCustomModel, getCustomModels, updateCustomModel } from './handlers/modelConfig.js';
+import {
+  createRagCollection,
+  deleteRagCollection,
+  deleteRagDocument,
+  getRagCollections,
+  getRagDocuments,
+  searchRagCollection,
+  updateRagCollection,
+  uploadRagDocuments
+} from './handlers/rag.js';
 import { getModelNames } from './providers/modelProviders.js';
 
 dotenv.config();
@@ -50,6 +60,34 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET'  && path === '/api/config/models') return json(res, getModelNames());
   if (req.method === 'GET'  && path === '/api/config/custom-models') return getCustomModels(req, res, ctx);
   if (req.method === 'POST' && path === '/api/config/custom-models') return createCustomModel(req, res, ctx);
+  if (req.method === 'GET'  && path === '/api/rag/collections') return getRagCollections(req, res, ctx);
+  if (req.method === 'POST' && path === '/api/rag/collections') return createRagCollection(req, res, ctx);
+
+  const ragCollectionMatch = path.match(/^\/api\/rag\/collections\/([^/?]+)$/);
+  if (ragCollectionMatch) {
+    const collectionId = decodeURIComponent(ragCollectionMatch[1]);
+    if (req.method === 'PATCH') return updateRagCollection(req, res, { ...ctx, collectionId });
+    if (req.method === 'DELETE') return deleteRagCollection(req, res, { ...ctx, collectionId });
+  }
+
+  const ragDocumentsMatch = path.match(/^\/api\/rag\/collections\/([^/?]+)\/documents$/);
+  if (ragDocumentsMatch) {
+    const collectionId = decodeURIComponent(ragDocumentsMatch[1]);
+    if (req.method === 'GET') return getRagDocuments(req, res, { ...ctx, collectionId });
+    if (req.method === 'POST') return uploadRagDocuments(req, res, { ...ctx, collectionId });
+  }
+
+  const ragSearchMatch = path.match(/^\/api\/rag\/collections\/([^/?]+)\/search(?:\?.*)?$/);
+  if (ragSearchMatch) {
+    const collectionId = decodeURIComponent(ragSearchMatch[1]);
+    if (req.method === 'GET') return searchRagCollection(req, res, { ...ctx, collectionId });
+  }
+
+  const ragDocumentMatch = path.match(/^\/api\/rag\/documents\/([^/?]+)$/);
+  if (ragDocumentMatch) {
+    const documentId = decodeURIComponent(ragDocumentMatch[1]);
+    if (req.method === 'DELETE') return deleteRagDocument(req, res, { ...ctx, documentId });
+  }
 
   const customModelMatch = path.match(/^\/api\/config\/custom-models\/([^/?]+)$/);
   if (customModelMatch) {
