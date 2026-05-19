@@ -81,22 +81,4 @@ if (!messageColumns.includes('status')) {
   db.exec("ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'");
 }
 
-export const stmt = {
-  listSessions:  db.prepare('SELECT * FROM sessions ORDER BY created_at DESC'),
-  getSession:    db.prepare('SELECT * FROM sessions WHERE id = ?'),
-  createSession: db.prepare('INSERT INTO sessions (id) VALUES (?)'),
-  deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
-  updateTitle:   db.prepare('UPDATE sessions SET title = ? WHERE id = ?'),
-  listMessages:  db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC'),
-  insertMessage: db.prepare('INSERT INTO messages (id, session_id, role, content, reasoning_content, model_provider, status) VALUES (?, ?, ?, ?, ?, ?, ?)'),
-  countMessages:  db.prepare('SELECT COUNT(*) as count FROM messages WHERE session_id = ?'),
-  updateMessage:  db.prepare('UPDATE messages SET content = ? WHERE id = ? AND session_id = ?'),
-  deleteMessage:  db.prepare('DELETE FROM messages WHERE id = ? AND session_id = ?'),
-  listMessageSources: db.prepare('SELECT * FROM message_sources WHERE message_id = ? ORDER BY citation_order ASC'),
-  insertMessageSource: db.prepare(`INSERT INTO message_sources (
-    id, message_id, chunk_id, citation_order, score, collection_id, document_id, document_name, chunk_index, excerpt
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-  deleteMessageSources: db.prepare('DELETE FROM message_sources WHERE message_id = ?'),
-};
-
 export default db;

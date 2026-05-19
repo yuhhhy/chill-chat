@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import db from '../db.js';
+import * as ragDb from '../db/rag.js';
 import { chunkText } from './chunking.js';
 import { createEmbeddings } from './embedding.js';
 import { extractTextFromFile } from './fileParsers.js';
@@ -8,43 +8,6 @@ const TOP_K = 8;
 const MIN_SCORE = 0.25;
 const MAX_CONTEXT_CHARS = 8000;
 const EMBEDDING_BATCH_SIZE = 16;
-
-const queries = {
-  listCollections: db.prepare(`
-    SELECT c.*,
-      COUNT(DISTINCT d.id) AS document_count,
-      COUNT(ch.id) AS chunk_count
-    FROM rag_collections c
-    LEFT JOIN rag_documents d ON d.collection_id = c.id
-    LEFT JOIN rag_chunks ch ON ch.document_id = d.id
-    GROUP BY c.id
-    ORDER BY c.updated_at DESC, c.created_at DESC
-  `),
-  getCollection: db.prepare('SELECT * FROM rag_collections WHERE id = ?'),
-  insertCollection: db.prepare('INSERT INTO rag_collections (id, name, description) VALUES (?, ?, ?)'),
-  updateCollection: db.prepare('UPDATE rag_collections SET name = ?, description = ?, updated_at = unixepoch() WHERE id = ?'),
-  deleteCollection: db.prepare('DELETE FROM rag_collections WHERE id = ?'),
-  touchCollection: db.prepare('UPDATE rag_collections SET updated_at = unixepoch() WHERE id = ?'),
-  listDocuments: db.prepare('SELECT * FROM rag_documents WHERE collection_id = ? ORDER BY created_at DESC'),
-  getDocument: db.prepare('SELECT * FROM rag_documents WHERE id = ?'),
-  insertDocument: db.prepare(`INSERT INTO rag_documents (
-    id, collection_id, filename, mime_type, size, status
-  ) VALUES (?, ?, ?, ?, ?, ?)`),
-  updateDocumentStatus: db.prepare(`UPDATE rag_documents
-    SET status = ?, error_message = ?, chunk_count = ?, updated_at = unixepoch()
-    WHERE id = ?`),
-  deleteDocument: db.prepare('DELETE FROM rag_documents WHERE id = ?'),
-  deleteDocumentChunks: db.prepare('DELETE FROM rag_chunks WHERE document_id = ?'),
-  insertChunk: db.prepare(`INSERT INTO rag_chunks (
-    id, document_id, collection_id, chunk_index, content, char_count, embedding
-  ) VALUES (?, ?, ?, ?, ?, ?, ?)`),
-  listChunksForCollection: db.prepare(`
-    SELECT ch.*, d.filename AS document_name
-    FROM rag_chunks ch
-    JOIN rag_documents d ON d.id = ch.document_id
-    WHERE ch.collection_id = ?
-  `)
-};
 
 function toCollection(row) {
   return {
@@ -103,7 +66,7 @@ async function embedInBatches(chunks) {
 }
 
 export function listCollections() {
-  return queries.listCollections.all().map(toCollection);
+  return ragDb.listCollections().map(toCollection);
 }
 
 export function createCollection({ name, description = '' }) {
@@ -111,33 +74,33 @@ export function createCollection({ name, description = '' }) {
   if (!cleanName) throw new Error('知识库名称不能为空');
 
   const id = randomUUID();
-  queries.insertCollection.run(id, cleanName.slice(0, 80), String(description || '').trim().slice(0, 500));
-  return toCollection({ ...queries.getCollection.get(id), document_count: 0, chunk_count: 0 });
+  ragDb.insertCollection(id, cleanName.slice(0, 80), String(description || '').trim().slice(0, 500));
+  return toCollection({ ...ragDb.getCollection(id), document_count: 0, chunk_count: 0 });
 }
 
 export function updateCollection(id, { name, description = '' }) {
   const cleanName = String(name || '').trim();
   if (!cleanName) throw new Error('知识库名称不能为空');
 
-  const result = queries.updateCollection.run(cleanName.slice(0, 80), String(description || '').trim().slice(0, 500), id);
+  const result = ragDb.updateCollection(cleanName.slice(0, 80), String(description || '').trim().slice(0, 500), id);
   if (result.changes === 0) throw new Error('知识库不存在');
   return listCollections().find(collection => collection.id === id);
 }
 
 export function deleteCollection(id) {
-  queries.deleteCollection.run(id);
+  ragDb.deleteCollection(id);
 }
 
 export function listDocuments(collectionId) {
-  return queries.listDocuments.all(collectionId).map(toDocument);
+  return ragDb.listDocuments(collectionId).map(toDocument);
 }
 
 export async function indexDocument(collectionId, file) {
-  if (!queries.getCollection.get(collectionId)) throw new Error('知识库不存在');
+  if (!ragDb.getCollection(collectionId)) throw new Error('知识库不存在');
 
   const documentId = randomUUID();
-  queries.insertDocument.run(documentId, collectionId, file.filename, file.mimeType, file.size, 'indexing');
-  queries.touchCollection.run(collectionId);
+  ragDb.insertDocument(documentId, collectionId, file.filename, file.mimeType, file.size, 'indexing');
+  ragDb.touchCollection(collectionId);
 
   try {
     const text = await extractTextFromFile(file);
@@ -145,33 +108,16 @@ export async function indexDocument(collectionId, file) {
     if (chunks.length === 0) throw new Error('文档没有可索引的文本内容');
 
     const vectors = await embedInBatches(chunks);
-
-    const replaceChunks = db.transaction(() => {
-      queries.deleteDocumentChunks.run(documentId);
-      chunks.forEach((content, index) => {
-        queries.insertChunk.run(
-          randomUUID(),
-          documentId,
-          collectionId,
-          index,
-          content,
-          content.length,
-          JSON.stringify(vectors[index])
-        );
-      });
-      queries.updateDocumentStatus.run('ready', '', chunks.length, documentId);
-      queries.touchCollection.run(collectionId);
-    });
-    replaceChunks();
+    ragDb.replaceDocumentChunks(documentId, collectionId, chunks, vectors);
   } catch (error) {
-    queries.updateDocumentStatus.run('failed', error.message, 0, documentId);
+    ragDb.updateDocumentStatus('failed', error.message, 0, documentId);
   }
 
-  return toDocument(queries.getDocument.get(documentId));
+  return toDocument(ragDb.getDocument(documentId));
 }
 
 export function deleteDocument(documentId) {
-  queries.deleteDocument.run(documentId);
+  ragDb.deleteDocument(documentId);
 }
 
 export async function searchCollection(collectionId, query, { topK = TOP_K, minScore = MIN_SCORE } = {}) {
@@ -179,7 +125,7 @@ export async function searchCollection(collectionId, query, { topK = TOP_K, minS
   if (!text) return [];
 
   const [queryVector] = await createEmbeddings(text);
-  const rows = queries.listChunksForCollection.all(collectionId);
+  const rows = ragDb.listChunksForCollection(collectionId);
 
   return rows
     .map((row) => {
