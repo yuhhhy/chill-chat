@@ -56,11 +56,18 @@ function excerptFor(content) {
   return content.replace(/\s+/g, ' ').trim().slice(0, 360);
 }
 
-async function embedInBatches(chunks) {
+async function embedInBatches(chunks, onProgress) {
   const vectors = [];
   for (let i = 0; i < chunks.length; i += EMBEDDING_BATCH_SIZE) {
     const batch = chunks.slice(i, i + EMBEDDING_BATCH_SIZE);
     vectors.push(...await createEmbeddings(batch));
+    onProgress?.({
+      phase: 'embedding',
+      current: vectors.length,
+      total: chunks.length,
+      percent: Math.round((vectors.length / chunks.length) * 100),
+      message: `向量化中 ${vectors.length}/${chunks.length}`
+    });
   }
   return vectors;
 }
@@ -102,10 +109,24 @@ export async function indexDocument(collectionId, file) {
   ragDb.insertDocument(documentId, collectionId, file.filename, file.mimeType, file.size, 'indexing');
   ragDb.touchCollection(collectionId);
 
+export async function processDocumentIndex(documentId, file, onProgress) {
   try {
+    const indexingDocument = queries.getDocument.get(documentId);
+    if (!indexingDocument) throw new Error('文档不存在');
+
+    onProgress?.({ phase: 'parsing', current: 0, total: 0, percent: 5, message: '解析文档中' });
     const text = await extractTextFromFile(file);
+
+    onProgress?.({ phase: 'chunking', current: 0, total: 0, percent: 10, message: '分块中' });
     const chunks = chunkText(text);
     if (chunks.length === 0) throw new Error('文档没有可索引的文本内容');
+    onProgress?.({
+      phase: 'chunking',
+      current: chunks.length,
+      total: chunks.length,
+      percent: 15,
+      message: `已切分 ${chunks.length} 个片段`
+    });
 
     const vectors = await embedInBatches(chunks);
     ragDb.replaceDocumentChunks(documentId, collectionId, chunks, vectors);

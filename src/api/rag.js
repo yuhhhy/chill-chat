@@ -82,6 +82,45 @@ export function uploadRagDocument(collectionId, file, { onProgress } = {}) {
   });
 }
 
+export function subscribeRagIndexJob(jobId, { onDone, onError, onProgress } = {}) {
+  const eventSource = new EventSource(`/api/rag/index-jobs/${encodeURIComponent(jobId)}/events`);
+
+  const parseEvent = (event) => {
+    try {
+      return JSON.parse(event.data || '{}');
+    } catch {
+      return {};
+    }
+  };
+
+  eventSource.addEventListener('progress', (event) => {
+    onProgress?.(parseEvent(event));
+  });
+
+  eventSource.addEventListener('done', (event) => {
+    const data = parseEvent(event);
+    onProgress?.(data);
+    onDone?.(data);
+    eventSource.close();
+  });
+
+  eventSource.addEventListener('error', (event) => {
+    if (event.data) {
+      const data = parseEvent(event);
+      onError?.(new Error(data.error || data.message || '索引失败'), data);
+      eventSource.close();
+    }
+  });
+
+  eventSource.onerror = () => {
+    if (eventSource.readyState === EventSource.CLOSED) return;
+    onError?.(new Error('索引进度连接断开'));
+    eventSource.close();
+  };
+
+  return () => eventSource.close();
+}
+
 export function deleteRagDocument(documentId) {
   return apiDelete(`/api/rag/documents/${encodeURIComponent(documentId)}`);
 }

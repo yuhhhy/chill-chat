@@ -5,6 +5,7 @@ import {
   deleteRagCollection,
   deleteRagDocument,
   fetchRagDocuments,
+  subscribeRagIndexJob,
   updateRagCollection,
   uploadRagDocument
 } from '../../api/rag';
@@ -35,10 +36,58 @@ const emptyCollectionForm = {
 const uploadStatusText = {
   done: '完成',
   error: '失败',
-  indexing: '索引中',
+  indexing: '上传完成，索引中',
   uploading: '上传中',
   waiting: '等待中'
 };
+
+function getUploadStatusLabel(item) {
+  if (item.status === 'uploading') return `${uploadStatusText[item.status]} · ${Math.min(item.progress, 100)}%`;
+  if (item.status === 'indexing') {
+    const detail = item.indexTotal > 0 ? ` · ${item.indexCurrent}/${item.indexTotal}` : '';
+    return `${item.indexMessage || uploadStatusText[item.status]}${detail}`;
+  }
+  return uploadStatusText[item.status] || item.status;
+}
+
+function getItemProgress(item) {
+  if (item.status === 'indexing') return Math.min(item.indexProgress || 0, 100);
+  if (item.status === 'done' || item.status === 'error') return 100;
+  return Math.min(item.progress || 0, 100);
+}
+
+function getItemOverallProgress(item) {
+  if (item.status === 'done' || item.status === 'error') return 100;
+  if (item.status === 'indexing') return 50 + (Math.min(item.indexProgress || 0, 100) / 2);
+  if (item.status === 'uploading') return Math.min(item.progress || 0, 100) / 2;
+  return 0;
+}
+
+function waitForIndexJob(jobId, onProgress) {
+  return new Promise((resolve, reject) => {
+    if (!jobId) {
+      reject(new Error('索引任务创建失败'));
+      return;
+    }
+
+    let settled = false;
+    const close = subscribeRagIndexJob(jobId, {
+      onProgress,
+      onDone: (progress) => {
+        if (settled) return;
+        settled = true;
+        onProgress?.(progress);
+        resolve(progress);
+      },
+      onError: (error, progress) => {
+        if (settled) return;
+        settled = true;
+        close();
+        reject(new Error(progress?.error || error.message));
+      }
+    });
+  });
+}
 
 const RagPage = () => {
   const ragCollections = useRagStore(s => s.ragCollections);
@@ -160,6 +209,10 @@ const RagPage = () => {
     setUploadItems(uploadEntries.map(({ file, id }) => ({
       id,
       error: '',
+      indexCurrent: 0,
+      indexMessage: '',
+      indexProgress: 0,
+      indexTotal: 0,
       loaded: 0,
       name: file.name,
       progress: 0,
@@ -181,10 +234,20 @@ const RagPage = () => {
         updateUploadItem(id, { status: 'uploading', progress: 0, loaded: 0, error: '' });
 
         try {
-          await uploadRagDocument(activeCollection.id, file, {
+          const result = await uploadRagDocument(activeCollection.id, file, {
             onProgress: ({ loaded, percent }) => {
               updateUploadItem(id, { loaded, progress: percent, status: percent >= 100 ? 'indexing' : 'uploading' });
             }
+          });
+          const job = result.jobs?.[0];
+          await waitForIndexJob(job?.id, (progress) => {
+            updateUploadItem(id, {
+              indexCurrent: progress.current || 0,
+              indexMessage: progress.message || uploadStatusText.indexing,
+              indexProgress: progress.percent || 0,
+              indexTotal: progress.total || 0,
+              status: progress.status === 'completed' ? 'done' : 'indexing'
+            });
           });
           updateUploadItem(id, { loaded: file.size, progress: 100, status: 'done' });
         } catch (err) {
@@ -207,11 +270,14 @@ const RagPage = () => {
     }
   };
 
-  const uploadedBytes = uploadItems.reduce((sum, item) => sum + Math.min(item.loaded, item.size || item.loaded), 0);
-  const totalUploadBytes = uploadItems.reduce((sum, item) => sum + item.size, 0);
-  const totalUploadProgress = totalUploadBytes > 0
-    ? Math.round((uploadedBytes / totalUploadBytes) * 100)
+  const totalUploadWeight = uploadItems.reduce((sum, item) => sum + (item.size || 1), 0);
+  const totalUploadProgress = totalUploadWeight > 0
+    ? Math.round(uploadItems.reduce((sum, item) => sum + getItemOverallProgress(item) * (item.size || 1), 0) / totalUploadWeight)
     : 0;
+  const isAnyItemIndexing = uploadItems.some(item => item.status === 'indexing');
+  const totalUploadLabel = isAnyItemIndexing
+    ? `索引中 · ${Math.min(totalUploadProgress, 100)}%`
+    : `${Math.min(totalUploadProgress, 100)}%`;
 
   const handleDeleteDocument = async (document) => {
     if (!window.confirm(`删除文档「${document.filename}」？`)) return;
@@ -291,9 +357,9 @@ const RagPage = () => {
                   <>
                     <div className="rag-upload-total">
                       <span>总进度</span>
-                      <strong>{Math.min(totalUploadProgress, 100)}%</strong>
+                      <strong>{totalUploadLabel}</strong>
                     </div>
-                    <div className="rag-progress-track">
+                    <div className={`rag-progress-track ${isAnyItemIndexing ? 'indexing' : ''}`}>
                       <span style={{ width: `${Math.min(totalUploadProgress, 100)}%` }} />
                     </div>
                   </>
@@ -303,10 +369,10 @@ const RagPage = () => {
                     <div className="rag-upload-item" key={item.id}>
                       <div className="rag-upload-item-head">
                         <span>{item.name}</span>
-                        <small>{uploadStatusText[item.status]} · {Math.min(item.progress, 100)}%</small>
+                        <small>{getUploadStatusLabel(item)}</small>
                       </div>
-                      <div className="rag-progress-track small">
-                        <span style={{ width: `${Math.min(item.progress, 100)}%` }} />
+                      <div className={`rag-progress-track small ${item.status === 'indexing' ? 'indexing' : ''}`}>
+                        <span style={{ width: `${getItemProgress(item)}%` }} />
                       </div>
                       {item.error ? <em>{item.error}</em> : null}
                     </div>

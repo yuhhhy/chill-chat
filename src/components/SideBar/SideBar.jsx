@@ -13,6 +13,8 @@ const SideBar = ({ onOpenSettings }) => {
     const [extended, setExtended] = useState(true);
     const [width, setWidth] = useState(DEFAULT_WIDTH);
     const [isDragging, setIsDragging] = useState(false);
+    const [editingSessionId, setEditingSessionId] = useState(null);
+    const [editingTitle, setEditingTitle] = useState('');
     const isResizing = useRef(false);
     const location = useLocation();
     const navigate = useNavigate();
@@ -58,10 +60,58 @@ const SideBar = ({ onOpenSettings }) => {
                         {sessions.map((session) => (
                             <div
                                 key={session.id}
-                                onClick={() => loadSession(session.id)}
+                                onClick={() => {
+                                    if (editingSessionId) return;
+                                    loadSession(session.id);
+                                }}
                                 className={`recent-entry ${session.id === currentSessionId ? 'active' : ''}`}
                             >
-                                <p className="label session-title">{session.title}</p>
+                                {editingSessionId === session.id ? (
+                                    <form
+                                        className="session-title-form"
+                                        onClick={(e) => e.stopPropagation()}
+                                        onSubmit={(e) => {
+                                            e.preventDefault();
+                                            submitSessionTitle(session);
+                                        }}
+                                    >
+                                        <input
+                                            className="session-title-input"
+                                            value={editingTitle}
+                                            onChange={(e) => setEditingTitle(e.target.value)}
+                                            onBlur={() => submitSessionTitle(session)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    submitSessionTitle(session);
+                                                }
+                                                if (e.key === 'Escape') {
+                                                    e.preventDefault();
+                                                    cancelEditingSession();
+                                                }
+                                            }}
+                                            maxLength={80}
+                                            autoFocus
+                                            aria-label="修改会话名称"
+                                        />
+                                    </form>
+                                ) : (
+                                    <>
+                                        <p className="label session-title" title={session.title}>{session.title}</p>
+                                        <button
+                                            type="button"
+                                            className="session-action edit-session"
+                                            title="重命名"
+                                            aria-label={`重命名 ${session.title}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                startEditingSession(session);
+                                            }}
+                                        >
+                                            <EditIcon />
+                                        </button>
+                                    </>
+                                )}
                                 <img
                                     src={assets.trash}
                                     onClick={(e) => {

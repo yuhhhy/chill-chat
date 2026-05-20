@@ -1,13 +1,16 @@
 import {
+  createIndexingDocument,
   createCollection,
   deleteCollection,
   deleteDocument,
-  indexDocument,
+  getDocument,
   listCollections,
   listDocuments,
+  processDocumentIndex,
   searchCollection,
   updateCollection
 } from '../rag/store.js';
+import { indexJobs } from '../rag/indexJobs.js';
 import { parseMultipartForm, readRequestBuffer } from '../rag/multipart.js';
 
 export function getRagCollections(req, res) {
@@ -54,15 +57,41 @@ export async function uploadRagDocuments(req, res) {
       return;
     }
 
-    const documents = [];
+    const jobs = [];
     for (const file of files) {
-      documents.push(await indexDocument(req.params.collectionId, file));
+      const document = createIndexingDocument(req.params.collectionId, file);
+      const job = indexJobs.createJob(document);
+      jobs.push(job);
+
+      setImmediate(() => {
+        processDocumentIndex(document.id, file, (progress) => {
+          indexJobs.updateJob(job.id, {
+            phase: progress.phase,
+            current: progress.current ?? 0,
+            total: progress.total ?? 0,
+            percent: progress.percent ?? 0,
+            message: progress.message || '',
+            document: progress.document || getDocument(document.id) || document
+          });
+        })
+          .then((indexedDocument) => {
+            indexJobs.completeJob(job.id, indexedDocument);
+          })
+          .catch((error) => {
+            indexJobs.failJob(job.id, error, getDocument(document.id) || document);
+          });
+      });
     }
 
-    res.json({ documents });
+    res.status(202).json({ jobs, documents: jobs.map(job => job.document) });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
+}
+
+export function subscribeRagIndexJob(req, res) {
+  const after = Number(req.query.after || req.headers['last-event-id'] || 0);
+  indexJobs.subscribeJob(req.params.jobId, after, req, res);
 }
 
 export function deleteRagDocument(req, res) {
