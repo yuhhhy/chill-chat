@@ -24,13 +24,14 @@ export function updateSession(req, res) {
     return;
   }
 
-  const result = stmt.updateTitle.run(nextTitle.slice(0, 80), req.params.sessionId);
-  if (result.changes === 0) {
+  const session = sessionsDb.getSession(req.params.sessionId);
+  if (!session) {
     res.status(404).json({ error: '会话不存在' });
     return;
   }
 
-  res.json(stmt.getSession.get(req.params.sessionId));
+  sessionsDb.updateSessionTitle(req.params.sessionId, nextTitle.slice(0, 80));
+  res.json(sessionsDb.getSession(req.params.sessionId));
 }
 
 export function deleteSession(req, res) {

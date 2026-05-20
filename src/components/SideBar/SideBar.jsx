@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import './SideBar.css'
 import { assets } from '../../assets/assets'
 import { useSessionStore } from '../../stores/sessionStore';
+import { renameSession } from '../../api/sessions';
 import { EditIcon } from '../icons/ActionIcons';
 
 const COLLAPSED_WIDTH = 68;
@@ -25,6 +26,29 @@ const SideBar = ({ onOpenSettings }) => {
     const createNewSession = useSessionStore(s => s.createNewSession);
     const loadSession = useSessionStore(s => s.loadSession);
     const deleteSession = useSessionStore(s => s.deleteSession);
+    const updateSession = useSessionStore(s => s.updateSession);
+
+    const startEditingSession = (session) => {
+        setEditingSessionId(session.id);
+        setEditingTitle(session.title);
+    };
+
+    const cancelEditingSession = () => {
+        setEditingSessionId(null);
+        setEditingTitle('');
+    };
+
+    const submitSessionTitle = async (session) => {
+        const title = editingTitle.trim();
+        cancelEditingSession();
+        if (!title || title === session.title) return;
+        updateSession({ ...session, title });
+        try {
+            await renameSession(session.id, title);
+        } catch {
+            updateSession(session);
+        }
+    };
 
     useEffect(() => {
         const handleMouseMove = (e) => {
