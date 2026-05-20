@@ -124,3 +124,7 @@ export function subscribeRagIndexJob(jobId, { onDone, onError, onProgress } = {}
 export function deleteRagDocument(documentId) {
   return apiDelete(`/api/rag/documents/${encodeURIComponent(documentId)}`);
 }
+
+export function fetchDocumentChunks(documentId) {
+  return apiGet(`/api/rag/documents/${encodeURIComponent(documentId)}/chunks`);
+}

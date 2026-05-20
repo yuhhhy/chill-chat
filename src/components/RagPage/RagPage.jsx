@@ -4,6 +4,7 @@ import {
   createRagCollection,
   deleteRagCollection,
   deleteRagDocument,
+  fetchDocumentChunks,
   fetchRagDocuments,
   subscribeRagIndexJob,
   updateRagCollection,
@@ -105,6 +106,9 @@ const RagPage = () => {
   const [uploadItems, setUploadItems] = useState([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [error, setError] = useState('');
+  const [chunkViewerDoc, setChunkViewerDoc] = useState(null);
+  const [chunks, setChunks] = useState([]);
+  const [isLoadingChunks, setIsLoadingChunks] = useState(false);
   const fileInputRef = useRef(null);
 
   const activeCollection = useMemo(
@@ -279,6 +283,25 @@ const RagPage = () => {
     ? `索引中 · ${Math.min(totalUploadProgress, 100)}%`
     : `${Math.min(totalUploadProgress, 100)}%`;
 
+  const openChunkViewer = async (document) => {
+    setChunkViewerDoc(document);
+    setChunks([]);
+    setIsLoadingChunks(true);
+    try {
+      setChunks(await fetchDocumentChunks(document.id));
+    } catch (err) {
+      setError(err.message);
+      setChunkViewerDoc(null);
+    } finally {
+      setIsLoadingChunks(false);
+    }
+  };
+
+  const closeChunkViewer = () => {
+    setChunkViewerDoc(null);
+    setChunks([]);
+  };
+
   const handleDeleteDocument = async (document) => {
     if (!window.confirm(`删除文档「${document.filename}」？`)) return;
     setError('');
@@ -395,7 +418,10 @@ const RagPage = () => {
                         {document.errorMessage && <em>{document.errorMessage}</em>}
                       </div>
                       <span className={`rag-status ${document.status}`}>{statusText[document.status] || document.status}</span>
-                      <button type="button" onClick={() => handleDeleteDocument(document)}>删除</button>
+                      {document.status === 'ready' && (
+                        <button type="button" className="rag-doc-btn-view" onClick={() => openChunkViewer(document)}>chunks</button>
+                      )}
+                      <button type="button" className="rag-doc-btn-delete" onClick={() => handleDeleteDocument(document)}>删除</button>
                     </article>
                   ))}
                 </div>
@@ -406,6 +432,35 @@ const RagPage = () => {
           <div className="rag-empty full">创建第一个知识库后，就可以上传文档并在聊天里启用 RAG。</div>
         )}
       </section>
+
+      {chunkViewerDoc ? (
+        <div className="rag-chunk-viewer" onMouseDown={closeChunkViewer}>
+          <div className="rag-chunk-panel" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="rag-chunk-panel-header">
+              <div>
+                <h3>{chunkViewerDoc.filename}</h3>
+                <p>{isLoadingChunks ? '加载中…' : `${chunks.length} 个切片`}</p>
+              </div>
+              <button type="button" className="rag-editor-close" onClick={closeChunkViewer} aria-label="关闭">×</button>
+            </div>
+            <div className="rag-chunk-list">
+              {isLoadingChunks ? (
+                <div className="rag-chunk-loading">加载切片中…</div>
+              ) : chunks.length === 0 ? (
+                <div className="rag-chunk-loading">没有切片数据</div>
+              ) : chunks.map(chunk => (
+                <div className="rag-chunk-item" key={chunk.id}>
+                  <div className="rag-chunk-item-meta">
+                    <span className="rag-chunk-index">#{chunk.chunkIndex + 1}</span>
+                    <span className="rag-chunk-chars">{chunk.charCount} 字符</span>
+                  </div>
+                  <pre className="rag-chunk-content">{chunk.content}</pre>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isCollectionEditorOpen ? (
         <section

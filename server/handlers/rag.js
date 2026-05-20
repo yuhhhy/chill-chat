@@ -6,6 +6,7 @@ import {
   getDocument,
   listCollections,
   listDocuments,
+  listDocumentChunks,
   processDocumentIndex,
   searchCollection,
   updateCollection
@@ -97,6 +98,10 @@ export function subscribeRagIndexJob(req, res) {
 export function deleteRagDocument(req, res) {
   deleteDocument(req.params.documentId);
   res.json({ ok: true });
+}
+
+export function getRagDocumentChunks(req, res) {
+  res.json(listDocumentChunks(req.params.documentId));
 }
 
 export async function searchRagCollection(req, res) {

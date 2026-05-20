@@ -34,6 +34,12 @@ const queries = {
     FROM rag_chunks ch
     JOIN rag_documents d ON d.id = ch.document_id
     WHERE ch.collection_id = ?
+  `),
+  listChunksForDocument: db.prepare(`
+    SELECT id, document_id, collection_id, chunk_index, content, char_count, created_at
+    FROM rag_chunks
+    WHERE document_id = ?
+    ORDER BY chunk_index ASC
   `)
 };
 
@@ -91,6 +97,10 @@ export function insertChunk(id, documentId, collectionId, chunkIndex, content, c
 
 export function listChunksForCollection(collectionId) {
   return queries.listChunksForCollection.all(collectionId);
+}
+
+export function listChunksForDocument(documentId) {
+  return queries.listChunksForDocument.all(documentId);
 }
 
 export function replaceDocumentChunks(documentId, collectionId, chunks, vectors) {

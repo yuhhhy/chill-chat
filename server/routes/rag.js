@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import {
   getRagCollections, createRagCollection, updateRagCollection, deleteRagCollection,
-  getRagDocuments, uploadRagDocuments, subscribeRagIndexJob, deleteRagDocument, searchRagCollection
+  getRagDocuments, uploadRagDocuments, subscribeRagIndexJob, deleteRagDocument, searchRagCollection,
+  getRagDocumentChunks
 } from '../handlers/rag.js';
 
 const router = Router();
@@ -15,5 +16,6 @@ router.post('/collections/:collectionId/documents', uploadRagDocuments);
 router.get('/index-jobs/:jobId/events', subscribeRagIndexJob);
 router.get('/collections/:collectionId/search', searchRagCollection);
 router.delete('/documents/:documentId', deleteRagDocument);
+router.get('/documents/:documentId/chunks', getRagDocumentChunks);
 
 export default router;

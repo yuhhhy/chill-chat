@@ -151,6 +151,18 @@ export function deleteDocument(documentId) {
   ragDb.deleteDocument(documentId);
 }
 
+export function listDocumentChunks(documentId) {
+  return ragDb.listChunksForDocument(documentId).map(row => ({
+    id: row.id,
+    documentId: row.document_id,
+    collectionId: row.collection_id,
+    chunkIndex: row.chunk_index,
+    content: row.content,
+    charCount: row.char_count,
+    createdAt: row.created_at
+  }));
+}
+
 export async function searchCollection(collectionId, query, { topK = TOP_K, minScore = MIN_SCORE } = {}) {
   const text = String(query || '').trim();
   if (!text) return [];
