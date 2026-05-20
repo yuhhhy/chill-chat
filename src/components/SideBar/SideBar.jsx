@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import './SideBar.css'
 import { assets } from '../../assets/assets'
 import { useSessionStore } from '../../stores/sessionStore';
+import { EditIcon } from '../icons/ActionIcons';
 
 const COLLAPSED_WIDTH = 68;
 const DEFAULT_WIDTH = 260;

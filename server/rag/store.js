@@ -102,16 +102,18 @@ export function listDocuments(collectionId) {
   return ragDb.listDocuments(collectionId).map(toDocument);
 }
 
-export async function indexDocument(collectionId, file) {
+export function createIndexingDocument(collectionId, file) {
   if (!ragDb.getCollection(collectionId)) throw new Error('知识库不存在');
 
   const documentId = randomUUID();
   ragDb.insertDocument(documentId, collectionId, file.filename, file.mimeType, file.size, 'indexing');
   ragDb.touchCollection(collectionId);
+  return toDocument(ragDb.getDocument(documentId));
+}
 
 export async function processDocumentIndex(documentId, file, onProgress) {
   try {
-    const indexingDocument = queries.getDocument.get(documentId);
+    const indexingDocument = ragDb.getDocument(documentId);
     if (!indexingDocument) throw new Error('文档不存在');
 
     onProgress?.({ phase: 'parsing', current: 0, total: 0, percent: 5, message: '解析文档中' });
@@ -128,13 +130,21 @@ export async function processDocumentIndex(documentId, file, onProgress) {
       message: `已切分 ${chunks.length} 个片段`
     });
 
-    const vectors = await embedInBatches(chunks);
-    ragDb.replaceDocumentChunks(documentId, collectionId, chunks, vectors);
+    const vectors = await embedInBatches(chunks, onProgress);
+    ragDb.replaceDocumentChunks(documentId, indexingDocument.collection_id, chunks, vectors);
+
+    const document = toDocument(ragDb.getDocument(documentId));
+    onProgress?.({ phase: 'done', current: chunks.length, total: chunks.length, percent: 100, message: '索引完成', document });
+    return document;
   } catch (error) {
     ragDb.updateDocumentStatus('failed', error.message, 0, documentId);
+    throw error;
   }
+}
 
-  return toDocument(ragDb.getDocument(documentId));
+export function getDocument(documentId) {
+  const row = ragDb.getDocument(documentId);
+  return row ? toDocument(row) : null;
 }
 
 export function deleteDocument(documentId) {
