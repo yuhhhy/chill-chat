@@ -70,6 +70,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_message_sources_message ON message_sources(message_id);
 `);
 
+const ragChunkColumns = db.prepare('PRAGMA table_info(rag_chunks)').all().map(col => col.name);
+if (!ragChunkColumns.includes('parent_id')) {
+  db.exec("ALTER TABLE rag_chunks ADD COLUMN parent_id TEXT");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_rag_chunks_parent ON rag_chunks(parent_id)");
+}
+
 const messageColumns = db.prepare('PRAGMA table_info(messages)').all().map(column => column.name);
 if (!messageColumns.includes('reasoning_content')) {
   db.exec("ALTER TABLE messages ADD COLUMN reasoning_content TEXT NOT NULL DEFAULT ''");

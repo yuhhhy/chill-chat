@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import * as ragDb from '../db/rag.js';
-import { chunkText } from './chunking.js';
+import { chunkTextHierarchical } from './chunking.js';
 import { createEmbeddings } from './embedding.js';
 import { extractTextFromFile } from './fileParsers.js';
 
@@ -120,21 +120,21 @@ export async function processDocumentIndex(documentId, file, onProgress) {
     const text = await extractTextFromFile(file);
 
     onProgress?.({ phase: 'chunking', current: 0, total: 0, percent: 10, message: '分块中' });
-    const chunks = chunkText(text);
-    if (chunks.length === 0) throw new Error('文档没有可索引的文本内容');
+    const { parents, children } = chunkTextHierarchical(text);
+    if (parents.length === 0) throw new Error('文档没有可索引的文本内容');
     onProgress?.({
       phase: 'chunking',
-      current: chunks.length,
-      total: chunks.length,
+      current: parents.length,
+      total: parents.length,
       percent: 15,
-      message: `已切分 ${chunks.length} 个片段`
+      message: `已切分 ${parents.length} 个父片段，${children.length} 个子片段`
     });
 
-    const vectors = await embedInBatches(chunks, onProgress);
-    ragDb.replaceDocumentChunks(documentId, indexingDocument.collection_id, chunks, vectors);
+    const childVectors = await embedInBatches(children.map(c => c.content), onProgress);
+    ragDb.replaceDocumentChunks(documentId, indexingDocument.collection_id, parents, children, childVectors);
 
     const document = toDocument(ragDb.getDocument(documentId));
-    onProgress?.({ phase: 'done', current: chunks.length, total: chunks.length, percent: 100, message: '索引完成', document });
+    onProgress?.({ phase: 'done', current: parents.length, total: parents.length, percent: 100, message: '索引完成', document });
     return document;
   } catch (error) {
     ragDb.updateDocumentStatus('failed', error.message, 0, documentId);
@@ -170,30 +170,49 @@ export async function searchCollection(collectionId, query, { topK = TOP_K, minS
   const [queryVector] = await createEmbeddings(text);
   const rows = ragDb.listChunksForCollection(collectionId);
 
-  return rows
+  // Score every child chunk (rows with embedding != '')
+  const scored = rows
     .map((row) => {
       let embedding = [];
-      try {
-        embedding = JSON.parse(row.embedding);
-      } catch {
-        embedding = [];
-      }
+      try { embedding = JSON.parse(row.embedding); } catch { embedding = []; }
+      return { row, score: cosineSimilarity(queryVector, embedding) };
+    })
+    .filter(r => r.score >= minScore)
+    .sort((a, b) => b.score - a.score);
 
+  // Deduplicate by parent — keep highest-scoring child per parent
+  const bestByParent = new Map();
+  for (const item of scored) {
+    const key = item.row.parent_id || item.row.id;
+    if (!bestByParent.has(key) || bestByParent.get(key).score < item.score) {
+      bestByParent.set(key, item);
+    }
+  }
+
+  return [...bestByParent.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map((item, index) => {
+      const row = item.row;
+      // Retrieve parent content for context; fall back to child content (legacy data)
+      let content = row.content;
+      let chunkIndex = row.chunk_index;
+      if (row.parent_id) {
+        const parent = ragDb.getChunkById(row.parent_id);
+        if (parent) { content = parent.content; chunkIndex = parent.chunk_index; }
+      }
       return {
-        chunkId: row.id,
+        chunkId: row.parent_id || row.id,
         collectionId: row.collection_id,
         documentId: row.document_id,
         documentName: row.document_name,
-        chunkIndex: row.chunk_index,
-        content: row.content,
-        excerpt: excerptFor(row.content),
-        score: cosineSimilarity(queryVector, embedding)
+        chunkIndex,
+        content,
+        excerpt: excerptFor(content),
+        score: item.score,
+        order: index + 1
       };
-    })
-    .filter(result => result.score >= minScore)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .map((result, index) => ({ ...result, order: index + 1 }));
+    });
 }
 
 export async function buildRagContext(collectionId, messages) {
@@ -235,6 +254,6 @@ export async function buildRagContext(collectionId, messages) {
 }
 
 export const ragInternals = {
-  chunkText,
+  chunkTextHierarchical,
   cosineSimilarity
 };

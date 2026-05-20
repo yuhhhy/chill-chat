@@ -26,19 +26,23 @@ const queries = {
     WHERE id = ?`),
   deleteDocument:       db.prepare('DELETE FROM rag_documents WHERE id = ?'),
   deleteDocumentChunks: db.prepare('DELETE FROM rag_chunks WHERE document_id = ?'),
-  insertChunk: db.prepare(`INSERT INTO rag_chunks (
+  insertParentChunk: db.prepare(`INSERT INTO rag_chunks (
     id, document_id, collection_id, chunk_index, content, char_count, embedding
-  ) VALUES (?, ?, ?, ?, ?, ?, ?)`),
+  ) VALUES (?, ?, ?, ?, ?, ?, '')`),
+  insertChunk: db.prepare(`INSERT INTO rag_chunks (
+    id, document_id, collection_id, chunk_index, content, char_count, embedding, parent_id
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+  getChunkById: db.prepare('SELECT * FROM rag_chunks WHERE id = ?'),
   listChunksForCollection: db.prepare(`
     SELECT ch.*, d.filename AS document_name
     FROM rag_chunks ch
     JOIN rag_documents d ON d.id = ch.document_id
-    WHERE ch.collection_id = ?
+    WHERE ch.collection_id = ? AND ch.embedding != ''
   `),
   listChunksForDocument: db.prepare(`
     SELECT id, document_id, collection_id, chunk_index, content, char_count, created_at
     FROM rag_chunks
-    WHERE document_id = ?
+    WHERE document_id = ? AND (parent_id IS NULL OR parent_id = '')
     ORDER BY chunk_index ASC
   `)
 };
@@ -91,8 +95,16 @@ export function deleteDocumentChunks(documentId) {
   queries.deleteDocumentChunks.run(documentId);
 }
 
-export function insertChunk(id, documentId, collectionId, chunkIndex, content, charCount, embedding) {
-  queries.insertChunk.run(id, documentId, collectionId, chunkIndex, content, charCount, embedding);
+export function insertParentChunk(id, documentId, collectionId, chunkIndex, content, charCount) {
+  queries.insertParentChunk.run(id, documentId, collectionId, chunkIndex, content, charCount);
+}
+
+export function insertChunk(id, documentId, collectionId, chunkIndex, content, charCount, embedding, parentId) {
+  queries.insertChunk.run(id, documentId, collectionId, chunkIndex, content, charCount, embedding, parentId);
+}
+
+export function getChunkById(id) {
+  return queries.getChunkById.get(id);
 }
 
 export function listChunksForCollection(collectionId) {
@@ -103,21 +115,30 @@ export function listChunksForDocument(documentId) {
   return queries.listChunksForDocument.all(documentId);
 }
 
-export function replaceDocumentChunks(documentId, collectionId, chunks, vectors) {
+export function replaceDocumentChunks(documentId, collectionId, parents, children, childVectors) {
   const replace = db.transaction(() => {
     deleteDocumentChunks(documentId);
-    chunks.forEach((content, index) => {
+
+    const parentIds = parents.map((content, index) => {
+      const id = crypto.randomUUID();
+      insertParentChunk(id, documentId, collectionId, index, content, content.length);
+      return id;
+    });
+
+    children.forEach((child, index) => {
       insertChunk(
         crypto.randomUUID(),
         documentId,
         collectionId,
         index,
-        content,
-        content.length,
-        JSON.stringify(vectors[index])
+        child.content,
+        child.content.length,
+        JSON.stringify(childVectors[index]),
+        parentIds[child.parentIndex]
       );
     });
-    updateDocumentStatus('ready', '', chunks.length, documentId);
+
+    updateDocumentStatus('ready', '', parents.length, documentId);
     touchCollection(collectionId);
   });
   replace();
