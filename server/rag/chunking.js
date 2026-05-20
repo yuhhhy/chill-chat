@@ -1,5 +1,5 @@
-const DEFAULT_CHUNK_SIZE = 1200;
-const DEFAULT_OVERLAP = 200;
+const DEFAULT_CHUNK_SIZE = 500;
+const DEFAULT_OVERLAP = 100;
 
 function normalizeText(text) {
   return String(text || '')
