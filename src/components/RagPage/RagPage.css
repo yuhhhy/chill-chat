@@ -34,21 +34,6 @@
     overflow: hidden;
 }
 
-.rag-heading {
-    padding: 0 8px;
-    margin-bottom: 24px;
-}
-
-.rag-heading h1 {
-    margin: 0;
-    font-size: 28px;
-    line-height: 1.15;
-    font-weight: 700;
-    background: linear-gradient(90deg, #4F8BF5 0%, #B85A8C 70%, #C97A5B 100%);
-    -webkit-background-clip: text;
-    color: transparent;
-}
-
 .rag-add-collection {
     width: 100%;
     height: 40px;

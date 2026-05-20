@@ -294,9 +294,6 @@ const RagPage = () => {
   return (
     <main className="rag-page">
       <section className="rag-sidebar-panel">
-        <div className="rag-heading">
-          <h1>RAG 知识库</h1>
-        </div>
 
         <button type="button" className="rag-add-collection" onClick={() => openCollectionEditor()}>
           <span aria-hidden="true">+</span>
