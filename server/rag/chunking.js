@@ -1,5 +1,8 @@
-export const DEFAULT_MAX_CHUNK = 1200;
-export const DEFAULT_CHILD_CHUNK = 300;
+export const DEFAULT_MAX_CHUNK = 800;
+export const DEFAULT_CHILD_CHUNK = 200;
+export const DEFAULT_MIN_CHUNK = 60;
+export const DEFAULT_PARENT_MIN_CHUNK = 100;
+export const DEFAULT_CHILD_MIN_CHUNK = 50;
 
 function normalizeText(text) {
   return String(text || '')
@@ -44,7 +47,35 @@ function splitBySentences(text, maxSize) {
   return results;
 }
 
-export function chunkText(text, { maxChunkSize = DEFAULT_MAX_CHUNK } = {}) {
+function mergeSmallChunks(chunks, minChunkSize, maxChunkSize) {
+  if (!minChunkSize || minChunkSize <= 0) return chunks;
+
+  const merged = [];
+  for (const chunk of chunks) {
+    const previous = merged[merged.length - 1];
+    const joined = previous ? `${previous}\n\n${chunk}` : chunk;
+
+    if (chunk.length < minChunkSize && previous && joined.length <= maxChunkSize) {
+      merged[merged.length - 1] = joined;
+    } else {
+      merged.push(chunk);
+    }
+  }
+
+  if (merged.length > 1 && merged[0].length < minChunkSize) {
+    const joined = `${merged[0]}\n\n${merged[1]}`;
+    if (joined.length <= maxChunkSize) {
+      merged.splice(0, 2, joined);
+    }
+  }
+
+  return merged;
+}
+
+export function chunkText(text, {
+  maxChunkSize = DEFAULT_MAX_CHUNK,
+  minChunkSize = DEFAULT_MIN_CHUNK
+} = {}) {
   const normalized = normalizeText(text);
   if (!normalized) return [];
 
@@ -81,18 +112,26 @@ export function chunkText(text, { maxChunkSize = DEFAULT_MAX_CHUNK } = {}) {
   }
 
   flush();
-  return chunks.filter(Boolean);
+  return mergeSmallChunks(chunks.filter(Boolean), minChunkSize, maxChunkSize);
 }
 
 export function chunkTextHierarchical(text, {
   parentMaxSize = DEFAULT_MAX_CHUNK,
-  childMaxSize = DEFAULT_CHILD_CHUNK
+  childMaxSize = DEFAULT_CHILD_CHUNK,
+  parentMinSize = DEFAULT_PARENT_MIN_CHUNK,
+  childMinSize = DEFAULT_CHILD_MIN_CHUNK
 } = {}) {
-  const parents = chunkText(text, { maxChunkSize: parentMaxSize });
+  const parents = chunkText(text, {
+    maxChunkSize: parentMaxSize,
+    minChunkSize: parentMinSize
+  });
   const children = [];
 
   parents.forEach((parentContent, parentIndex) => {
-    chunkText(parentContent, { maxChunkSize: childMaxSize }).forEach(content => {
+    chunkText(parentContent, {
+      maxChunkSize: childMaxSize,
+      minChunkSize: childMinSize
+    }).forEach(content => {
       children.push({ parentIndex, content });
     });
   });

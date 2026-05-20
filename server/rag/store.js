@@ -4,10 +4,11 @@ import { chunkTextHierarchical } from './chunking.js';
 import { createEmbeddings } from './embedding.js';
 import { extractTextFromFile } from './fileParsers.js';
 
-const TOP_K = 8;
+const TOP_K = 6;
 const MIN_SCORE = 0.25;
 const MAX_CONTEXT_CHARS = 8000;
-const EMBEDDING_BATCH_SIZE = 16;
+const EMBEDDING_BATCH_SIZE = 1;
+const EMBEDDING_CONCURRENCY = 16;
 
 function toCollection(row) {
   return {
@@ -57,19 +58,33 @@ function excerptFor(content) {
 }
 
 async function embedInBatches(chunks, onProgress) {
-  const vectors = [];
+  const batches = [];
   for (let i = 0; i < chunks.length; i += EMBEDDING_BATCH_SIZE) {
-    const batch = chunks.slice(i, i + EMBEDDING_BATCH_SIZE);
-    vectors.push(...await createEmbeddings(batch));
-    onProgress?.({
-      phase: 'embedding',
-      current: vectors.length,
-      total: chunks.length,
-      percent: Math.round((vectors.length / chunks.length) * 100),
-      message: `向量化中 ${vectors.length}/${chunks.length}`
-    });
+    batches.push(chunks.slice(i, i + EMBEDDING_BATCH_SIZE));
   }
-  return vectors;
+
+  const results = new Array(batches.length);
+  let completedBatches = 0;
+  const queue = batches.map((texts, index) => ({ texts, index }));
+
+  const worker = async () => {
+    while (queue.length > 0) {
+      const task = queue.shift();
+      if (!task) break;
+      results[task.index] = await createEmbeddings(task.texts);
+      completedBatches += 1;
+      onProgress?.({
+        phase: 'embedding',
+        current: completedBatches,
+        total: batches.length,
+        percent: Math.round((completedBatches / batches.length) * 100),
+        message: `向量化中 ${completedBatches}/${batches.length}`
+      });
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(EMBEDDING_CONCURRENCY, batches.length) }, worker));
+  return results.flat();
 }
 
 export function listCollections() {
