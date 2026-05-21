@@ -62,11 +62,10 @@ const ChatInput = () => {
 
   const handleVoiceTranscript = useCallback((transcript) => {
     const text = transcript.trim();
-    if (!text || useChatStore.getState().isGenerating) return;
+    if (!text) return;
 
-    clearInputForSession(currentSessionId);
-    send(text);
-  }, [clearInputForSession, currentSessionId, send]);
+    setInput(text);
+  }, [setInput]);
 
   const {
     error: voiceError,
