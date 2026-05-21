@@ -41,6 +41,8 @@ const ArrowDownIcon = () => (
   </svg>
 );
 
+const INPUT_MAX_HEIGHT = 116;
+
 const ChatInput = () => {
   const send = useChatStore(s => s.send);
   const abortGeneration = useChatStore(s => s.abortGeneration);
@@ -59,9 +61,12 @@ const ChatInput = () => {
   const { attachedFiles, fileInputRef, openFilePicker, addFiles, removeFile, clearFiles } = useFileAttachment();
 
   const handleVoiceTranscript = useCallback((transcript) => {
-    setInput(transcript);
-    send(transcript);
-  }, [setInput, send]);
+    const text = transcript.trim();
+    if (!text || useChatStore.getState().isGenerating) return;
+
+    clearInputForSession(currentSessionId);
+    send(text);
+  }, [clearInputForSession, currentSessionId, send]);
 
   const {
     error: voiceError,
@@ -82,7 +87,7 @@ const ChatInput = () => {
   const handleChange = (e) => {
     setInput(e.target.value);
     e.target.style.height = "auto";
-    e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px";
+    e.target.style.height = Math.min(e.target.scrollHeight, INPUT_MAX_HEIGHT) + "px";
   };
 
   const handleSend = useCallback((prompt) => {

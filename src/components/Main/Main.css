@@ -85,6 +85,7 @@ html[data-theme="dark"] .main .card .card-icon{
 
 .main-bottom{
     position: absolute;
+    z-index: 40;
     bottom: 48px;
     left: 0;
     right: 0;
@@ -156,7 +157,7 @@ html[data-theme="dark"] .search-box {
     font-family: inherit;
     resize: none;
     min-height: 24px;
-    max-height: 140px;
+    max-height: 116px;
     overflow-y: auto;
     line-height: 1.5;
     color: var(--text-primary);
