@@ -66,6 +66,18 @@ function limitContext(messages, contextTurnCount) {
   return messages.slice(userIndexes[keepFrom] ?? 0);
 }
 
+function buildApiMessages(messages, contextTurnCount) {
+  const apiMessages = limitContext(messages, contextTurnCount)
+    .map(m => ({ role: m.role, content: m.content }));
+  const { selectedSystemPromptId, systemPrompts } = useSettingsStore.getState();
+  const selectedPrompt = systemPrompts.find(prompt => prompt.id === selectedSystemPromptId);
+  const systemPrompt = selectedPrompt?.content?.trim();
+
+  return systemPrompt
+    ? [{ role: 'system', content: systemPrompt }, ...apiMessages]
+    : apiMessages;
+}
+
 const generatingSessions = new Map();
 const sessionMessages = new Map();
 const streamParsers = new Map();
@@ -156,7 +168,7 @@ export const useChatStore = create((set, get) => ({
     set({ messages: withAI });
 
     await runStream(
-      limitContext(nextMessages, contextTurnCount).map(m => ({ role: m.role, content: m.content })),
+      buildApiMessages(nextMessages, contextTurnCount),
       withAI, aiMessage, sessionId, modelProvider, selectedRagCollectionId
     );
   },
@@ -192,7 +204,7 @@ export const useChatStore = create((set, get) => ({
     set({ messages: withPlaceholder });
 
     await runStream(
-      limitContext(history, contextTurnCount).map(m => ({ role: m.role, content: m.content })),
+      buildApiMessages(history, contextTurnCount),
       withPlaceholder, aiPlaceholder, sessionId, modelProvider, selectedRagCollectionId
     );
   },
@@ -304,7 +316,7 @@ export const useChatStore = create((set, get) => ({
     set({ messages: withPlaceholder });
 
     await runStream(
-      limitContext(history, contextTurnCount).map(m => ({ role: m.role, content: m.content })),
+      buildApiMessages(history, contextTurnCount),
       withPlaceholder, aiPlaceholder, sessionId, modelProvider, selectedRagCollectionId
     );
   }

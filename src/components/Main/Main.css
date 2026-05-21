@@ -14,13 +14,74 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
     font-size: 22px;
     padding: 20px;
     color: var(--text-secondary);
 }
+
+.nav-title-group {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nav-title-group p {
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.system-prompt-select {
+    min-width: 0;
+    max-width: min(260px, 38vw);
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-muted);
+    transition: border-color 0.16s ease, background-color 0.16s ease, color 0.16s ease;
+}
+
+.system-prompt-select.active {
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+}
+
+.system-prompt-select:hover {
+    border-color: var(--accent);
+    background: var(--accent-tint);
+    color: var(--accent-strong);
+}
+
+.system-prompt-select-label {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.system-prompt-select select {
+    min-width: 0;
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    text-overflow: ellipsis;
+}
+
 .main .nav img{
     width: 40px;
     border-radius: 50%;
+    flex-shrink: 0;
 }
 
 .main-container{
@@ -1058,6 +1119,23 @@ html[data-theme="dark"] .message-status {
     .main{
         --chat-content-padding: 28px;
         --prompt-card-min-width: 150px;
+    }
+
+    .main .nav {
+        padding: 16px;
+    }
+
+    .nav-title-group {
+        gap: 8px;
+    }
+
+    .system-prompt-select {
+        max-width: min(190px, 48vw);
+        padding: 0 8px;
+    }
+
+    .system-prompt-select-label {
+        display: none;
     }
     .main-bottom textarea{
         flex: 1;

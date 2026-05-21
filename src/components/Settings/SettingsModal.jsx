@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './SettingsModal.css';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { assets } from '../../assets/assets';
 import ModelAvatar from '../ModelAvatar/ModelAvatar';
 import { EditIcon } from '../icons/ActionIcons';
 import { modelProviderOptions } from '../../config/modelProviders';
@@ -9,6 +10,7 @@ import { createCustomModel, deleteCustomModel, updateCustomModel } from '../../a
 const settingsItems = [
   { id: 'general', label: '通用设置' },
   { id: 'model', label: '模型设置' },
+  { id: 'prompts', label: '提示词设置' },
   { id: 'privacy', label: '隐私与数据' },
   { id: 'about', label: '关于' }
 ];
@@ -30,6 +32,11 @@ const emptyCustomModelForm = {
   model: ''
 };
 
+const emptySystemPromptForm = {
+  title: '',
+  content: ''
+};
+
 const SettingsModal = ({ onClose }) => {
   const [activeSection, setActiveSection] = useState('general');
   const [isCustomModelEditorOpen, setIsCustomModelEditorOpen] = useState(false);
@@ -38,15 +45,24 @@ const SettingsModal = ({ onClose }) => {
   const [customModelError, setCustomModelError] = useState('');
   const [isDeletingCustomModel, setIsDeletingCustomModel] = useState(false);
   const [isSavingCustomModel, setIsSavingCustomModel] = useState(false);
+  const [systemPromptEditor, setSystemPromptEditor] = useState(null);
+  const [systemPromptForm, setSystemPromptForm] = useState(emptySystemPromptForm);
+  const [systemPromptError, setSystemPromptError] = useState('');
 
   const contextTurnCount = useSettingsStore(s => s.contextTurnCount);
+  const createSystemPrompt = useSettingsStore(s => s.createSystemPrompt);
   const customModels = useSettingsStore(s => s.customModels);
+  const deleteSystemPrompt = useSettingsStore(s => s.deleteSystemPrompt);
   const modelProvider = useSettingsStore(s => s.modelProvider);
   const refreshModelConfig = useSettingsStore(s => s.refreshModelConfig);
   const setContextTurnCount = useSettingsStore(s => s.setContextTurnCount);
   const setModelProvider = useSettingsStore(s => s.setModelProvider);
+  const setSelectedSystemPromptId = useSettingsStore(s => s.setSelectedSystemPromptId);
   const setTheme = useSettingsStore(s => s.setTheme);
+  const systemPrompts = useSettingsStore(s => s.systemPrompts);
+  const selectedSystemPromptId = useSettingsStore(s => s.selectedSystemPromptId);
   const theme = useSettingsStore(s => s.theme);
+  const updateSystemPrompt = useSettingsStore(s => s.updateSystemPrompt);
 
   const isDarkMode = theme === 'dark';
   const contextTurnIndex = Math.max(
@@ -76,6 +92,59 @@ const SettingsModal = ({ onClose }) => {
 
   const updateCustomModelField = (field, value) => {
     setCustomModelForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const openSystemPromptEditor = (prompt = null) => {
+    setSystemPromptEditor(prompt);
+    setSystemPromptError('');
+    setSystemPromptForm(prompt ? {
+      title: prompt.title || '',
+      content: prompt.content || ''
+    } : emptySystemPromptForm);
+  };
+
+  const updateSystemPromptField = (field, value) => {
+    setSystemPromptForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const saveSystemPrompt = (event) => {
+    event.preventDefault();
+
+    const title = systemPromptForm.title.trim();
+    const content = systemPromptForm.content.trim();
+
+    if (!title) {
+      setSystemPromptError('请输入提示词名称');
+      return;
+    }
+    if (!content) {
+      setSystemPromptError('请输入提示词内容');
+      return;
+    }
+
+    if (systemPromptEditor) {
+      updateSystemPrompt(systemPromptEditor.id, { title, content });
+    } else {
+      const prompt = createSystemPrompt({ title, content });
+      setSelectedSystemPromptId(prompt.id);
+    }
+
+    setSystemPromptEditor(null);
+    setSystemPromptForm(emptySystemPromptForm);
+    setSystemPromptError('');
+  };
+
+  const removeSystemPrompt = (promptId) => {
+    const targetPrompt = systemPrompts.find(prompt => prompt.id === promptId);
+    const confirmed = window.confirm(`确定要删除提示词「${targetPrompt?.title || '未命名'}」吗？`);
+    if (!confirmed) return;
+
+    deleteSystemPrompt(promptId);
+    if (systemPromptEditor?.id === promptId) {
+      setSystemPromptEditor(null);
+      setSystemPromptForm(emptySystemPromptForm);
+      setSystemPromptError('');
+    }
   };
 
   const saveCustomModel = async (event) => {
@@ -286,6 +355,110 @@ const SettingsModal = ({ onClose }) => {
                   </button>
                 </div>
               </>
+            ) : activeSection === 'prompts' ? (
+              <div className="settings-section">
+                <div className="settings-section-heading settings-section-heading-row">
+                  <div className="settings-heading-copy">
+                    <h3>提示词设置</h3>
+                    <p>管理聊天时可选的系统提示词。</p>
+                  </div>
+                </div>
+
+                {systemPrompts.length > 0 ? (
+                  <div className="system-prompt-list">
+                    {systemPrompts.map((prompt) => (
+                      <article
+                        key={prompt.id}
+                        className={`system-prompt-item ${selectedSystemPromptId === prompt.id ? 'active' : ''}`}
+                      >
+                        <button
+                          type="button"
+                          className="system-prompt-main"
+                          onClick={() => setSelectedSystemPromptId(selectedSystemPromptId === prompt.id ? '' : prompt.id)}
+                          aria-pressed={selectedSystemPromptId === prompt.id}
+                        >
+                          <span className="system-prompt-title">{prompt.title}</span>
+                          <span className="system-prompt-preview">{prompt.content}</span>
+                        </button>
+                        <span className="system-prompt-actions">
+                          <button
+                            type="button"
+                            className="system-prompt-icon-button"
+                            onClick={() => openSystemPromptEditor(prompt)}
+                            aria-label={`编辑 ${prompt.title}`}
+                            title="编辑"
+                          >
+                            <EditIcon />
+                          </button>
+                          <button
+                            type="button"
+                            className="system-prompt-delete"
+                            onClick={() => removeSystemPrompt(prompt.id)}
+                            aria-label={`删除 ${prompt.title}`}
+                            title="删除"
+                          >
+                            <span
+                              className="system-prompt-trash-icon"
+                              style={{ '--icon-url': `url(${assets.trash})` }}
+                              aria-hidden="true"
+                            />
+                          </button>
+                        </span>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="system-prompt-empty">
+                    <h4>还没有提示词</h4>
+                    <p>新增后可以在聊天页标题旁快速切换。</p>
+                  </div>
+                )}
+
+                <form className="system-prompt-form" onSubmit={saveSystemPrompt}>
+                  <div className="system-prompt-form-heading">
+                    <h4>{systemPromptEditor ? '编辑提示词' : '新增提示词'}</h4>
+                    {systemPromptEditor ? (
+                      <button
+                        type="button"
+                        className="system-prompt-cancel"
+                        onClick={() => {
+                          setSystemPromptEditor(null);
+                          setSystemPromptForm(emptySystemPromptForm);
+                          setSystemPromptError('');
+                        }}
+                      >
+                        取消编辑
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <label className="custom-model-field">
+                    <span>名称</span>
+                    <input
+                      type="text"
+                      value={systemPromptForm.title}
+                      onChange={(event) => updateSystemPromptField('title', event.target.value)}
+                    />
+                  </label>
+
+                  <label className="custom-model-field">
+                    <span>提示词内容</span>
+                    <textarea
+                      value={systemPromptForm.content}
+                      onChange={(event) => updateSystemPromptField('content', event.target.value)}
+                      rows={7}
+                    />
+                  </label>
+
+                  {systemPromptError ? <p className="custom-model-error">{systemPromptError}</p> : null}
+
+                  <div className="system-prompt-form-actions">
+                    <button type="submit" className="system-prompt-submit">
+                      {systemPromptEditor ? '保存' : '新增'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             ) : (
               <div className="settings-placeholder">
                 <h3>{settingsItems.find((item) => item.id === activeSection)?.label}</h3>

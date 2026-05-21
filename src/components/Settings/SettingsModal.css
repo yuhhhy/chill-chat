@@ -119,6 +119,19 @@
     gap: 6px;
 }
 
+.settings-section-heading-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.settings-heading-copy {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
 .settings-section-heading h3 {
     margin: 0;
     color: var(--text-primary);
@@ -433,6 +446,207 @@
     line-height: 1.4;
 }
 
+.system-prompt-cancel {
+    min-height: 34px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 0 12px;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+}
+
+.system-prompt-cancel:hover {
+    border-color: var(--accent);
+    background: var(--accent-tint);
+    color: var(--accent-strong);
+}
+
+.system-prompt-list {
+    display: grid;
+    gap: 10px;
+}
+
+.system-prompt-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: var(--surface);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.system-prompt-item.active {
+    border-color: var(--accent-strong);
+    background: var(--accent-tint);
+}
+
+.system-prompt-main {
+    min-width: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    display: grid;
+    gap: 5px;
+    padding: 0;
+    text-align: left;
+}
+
+.system-prompt-main:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+    border-radius: 6px;
+}
+
+.system-prompt-title {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.system-prompt-preview {
+    color: var(--text-muted);
+    display: -webkit-box;
+    font-size: 12.5px;
+    line-height: 1.45;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.system-prompt-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.system-prompt-icon-button {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+}
+
+.system-prompt-icon-button:hover {
+    background: var(--surface-subtle);
+    color: var(--text-primary);
+}
+
+.system-prompt-delete {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+    padding: 0;
+}
+
+.system-prompt-delete:hover {
+    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.system-prompt-trash-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
+    background-color: currentColor;
+    mask: var(--icon-url) center / contain no-repeat;
+    -webkit-mask: var(--icon-url) center / contain no-repeat;
+}
+
+.system-prompt-empty {
+    display: grid;
+    gap: 6px;
+    padding: 18px;
+    border: 1px dashed var(--border-subtle);
+    border-radius: 10px;
+    background: var(--surface);
+}
+
+.system-prompt-empty h4,
+.system-prompt-form-heading h4 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.system-prompt-empty p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.system-prompt-form {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: var(--surface);
+}
+
+.system-prompt-form-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.system-prompt-form-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.system-prompt-submit {
+    min-width: 72px;
+    min-height: 36px;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border-subtle));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+    color: var(--accent-strong);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 0 16px;
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.system-prompt-submit:hover {
+    border-color: color-mix(in srgb, var(--accent) 46%, var(--border-subtle));
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    transform: translateY(-1px);
+}
+
+.system-prompt-submit:active {
+    transform: translateY(0);
+}
+
 .settings-placeholder {
     display: grid;
     gap: 8px;
@@ -496,9 +710,9 @@
     font-size: 13px;
 }
 
-.custom-model-field input {
+.custom-model-field input,
+.custom-model-field textarea {
     width: 100%;
-    min-height: 40px;
     box-sizing: border-box;
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
@@ -510,7 +724,26 @@
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.custom-model-field input:focus {
+.custom-model-field input {
+    min-height: 40px;
+}
+
+.custom-model-field textarea {
+    min-height: 150px;
+    line-height: 1.5;
+    padding: 10px 12px;
+    resize: none;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.custom-model-field textarea::-webkit-scrollbar {
+    display: none;
+}
+
+.custom-model-field input:focus,
+.custom-model-field textarea:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-soft);
 }
@@ -612,5 +845,17 @@
     .settings-row {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .settings-section-heading-row,
+    .system-prompt-item,
+    .system-prompt-form-heading {
+        align-items: stretch;
+        grid-template-columns: 1fr;
+        flex-direction: column;
+    }
+
+    .system-prompt-actions {
+        justify-content: flex-end;
     }
 }
