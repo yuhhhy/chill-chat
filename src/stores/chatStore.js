@@ -15,6 +15,7 @@ function toViewMessage(m) {
     content: m.content,
     modelProvider: m.model_provider || 'deepseek',
     reasoningContent: m.reasoning_content || '',
+    ragStatus: Array.isArray(m.sources) && m.sources.length ? 'retrieved' : '',
     sources: Array.isArray(m.sources) ? m.sources : [],
     timestamp: new Date(m.created_at * 1000).toLocaleString(),
     status: m.status || 'completed'
@@ -93,6 +94,7 @@ function persistPartial(parser, sessionId, message, status = 'aborted') {
     content: message.content || '',
     reasoningContent: message.reasoningContent || '',
     modelProvider: message.modelProvider || provider,
+    sources: message.sources || [],
     status
   }]).catch(err => console.error('Failed to save partial assistant message:', err));
 }
@@ -159,6 +161,7 @@ export const useChatStore = create((set, get) => ({
       role: 'assistant',
       content: '',
       modelProvider,
+      ragStatus: '',
       reasoningContent: '',
       sources: [],
       timestamp: new Date().toLocaleString(),
@@ -195,6 +198,7 @@ export const useChatStore = create((set, get) => ({
       role: 'assistant',
       content: '',
       modelProvider,
+      ragStatus: '',
       reasoningContent: '',
       sources: [],
       timestamp: new Date().toLocaleString(),
@@ -307,6 +311,7 @@ export const useChatStore = create((set, get) => ({
       role: 'assistant',
       content: '',
       modelProvider,
+      ragStatus: '',
       reasoningContent: '',
       sources: [],
       timestamp: new Date().toLocaleString(),
@@ -326,6 +331,7 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
   let streamedContent = '';
   let streamedReasoning = '';
   let retrievedSources = [];
+  let ragStatus = '';
 
   generatingSessions.set(sessionId, true);
   sessionMessages.set(sessionId, stateWithPlaceholder);
@@ -367,13 +373,14 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
           streamedReasoning += chunkContent;
         } else if (chunkType === 'sources') {
           retrievedSources = Array.isArray(chunk.sources) ? chunk.sources : [];
+          ragStatus = retrievedSources.length ? 'retrieved' : 'empty';
         } else {
           streamedContent += chunkContent;
         }
 
         syncMessages(prev => prev.map(msg =>
           msg.id === aiMessage.id
-            ? { ...msg, content: streamedContent, reasoningContent: streamedReasoning, sources: retrievedSources }
+            ? { ...msg, content: streamedContent, ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
             : msg
         ));
       },
@@ -382,7 +389,7 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
         finishGeneration();
         syncMessages(prev => prev.map(msg =>
           msg.id === aiMessage.id
-            ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试', reasoningContent: streamedReasoning, sources: retrievedSources }
+            ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试', ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
             : msg
         ));
       },
@@ -391,7 +398,7 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
           finishGeneration();
           syncMessages(prev => prev.map(msg =>
             msg.id === aiMessage.id
-              ? { ...msg, status: 'failed', content: '生成失败，请重试', reasoningContent: streamedReasoning, sources: retrievedSources }
+              ? { ...msg, status: 'failed', content: '生成失败，请重试', ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
               : msg
           ));
           return;
@@ -400,7 +407,7 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
         finishGeneration();
         syncMessages(prev => prev.map(msg =>
           msg.id === aiMessage.id
-            ? { ...msg, status: 'completed', content: streamedContent, reasoningContent: streamedReasoning, sources: retrievedSources }
+            ? { ...msg, status: 'completed', content: streamedContent, ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
             : msg
         ));
         parser.assistantPersisted = true;
@@ -410,6 +417,7 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
           content: streamedContent,
           reasoningContent: streamedReasoning,
           modelProvider: provider,
+          ragStatus,
           sources: retrievedSources,
           status: 'completed'
         }]);
@@ -418,7 +426,7 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
         finishGeneration();
         syncMessages(prev => prev.map(msg =>
           msg.id === aiMessage.id
-            ? { ...msg, status: 'aborted', content: streamedContent, reasoningContent: streamedReasoning, sources: retrievedSources }
+            ? { ...msg, status: 'aborted', content: streamedContent, ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
             : msg
         ));
         const aborted = sessionMessages.get(sessionId);
@@ -430,7 +438,7 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
     finishGeneration();
     syncMessages(prev => prev.map(msg =>
       msg.id === aiMessage.id
-        ? { ...msg, status: 'failed', content: '生成失败，请重试', reasoningContent: streamedReasoning, sources: retrievedSources }
+        ? { ...msg, status: 'failed', content: '生成失败，请重试', ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
         : msg
     ));
   }

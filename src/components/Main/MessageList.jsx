@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { useChatStore } from "../../stores/chatStore";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -38,21 +38,51 @@ const ReasoningPanel = ({ content, isGenerating }) => {
   );
 };
 
-const SourcePanel = ({ sources = [] }) => {
-  const visibleSources = sources.slice(0, 3);
-  if (!visibleSources.length) return null;
+const SourcePanel = ({ expandedSources, onToggleSource, retrievalStatus, showAllSources, sourceRefs, sources = [], toggleShowAllSources }) => {
+  if (!sources.length) {
+    if (retrievalStatus !== 'empty') return null;
+    return (
+      <div className="source-panel source-panel-empty" aria-label="引用来源">
+        当前知识库未命中可靠片段
+      </div>
+    );
+  }
+
+  const visibleSources = showAllSources ? sources : sources.slice(0, 3);
+  const hiddenCount = Math.max(0, sources.length - visibleSources.length);
+
   return (
     <div className="source-panel" aria-label="引用来源">
+      <div className="source-status">已检索到 {sources.length} 条来源</div>
       {visibleSources.map((source, index) => (
-        <details className="source-chip" key={source.id || source.chunkId || index}>
+        <details
+          className="source-chip"
+          key={source.id || source.chunkId || index}
+          open={expandedSources.has(source.order || index + 1)}
+          ref={(node) => {
+            if (node) sourceRefs.current.set(source.order || index + 1, node);
+            else sourceRefs.current.delete(source.order || index + 1);
+          }}
+          onToggle={(event) => onToggleSource(source.order || index + 1, event.currentTarget.open)}
+        >
           <summary>
             <span className="source-number">[{source.order || index + 1}]</span>
-            <span className="source-name">{source.documentName}</span>
-            <span className="source-score">{Math.round((source.score || 0) * 100)}%</span>
+            <span className="source-name" title={source.documentName}>{source.documentName}</span>
+            <span className="source-chunk">chunk {(source.chunkIndex ?? 0) + 1}</span>
+            <span className="source-score">匹配度 {(source.score || 0).toFixed(3)}</span>
           </summary>
-          <p>{source.excerpt}</p>
+          {source.content && source.content !== source.excerpt ? (
+            <pre className="source-full-content">{source.content}</pre>
+          ) : (
+            <p>{source.excerpt}</p>
+          )}
         </details>
       ))}
+      {hiddenCount > 0 || showAllSources ? (
+        <button type="button" className="source-toggle" onClick={toggleShowAllSources}>
+          {showAllSources ? '收起来源' : '展开全部'}
+        </button>
+      ) : null}
     </div>
   );
 };
@@ -70,8 +100,30 @@ const MessageRow = ({ message, isLastAI }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [expandedSources, setExpandedSources] = useState(() => new Set());
+  const [showAllSources, setShowAllSources] = useState(false);
+  const sourceRefs = useRef(new Map());
   const messageProvider = message.modelProvider || 'deepseek';
   const isMessageGenerating = message.status === "generating";
+  const citationOrders = (message.sources || []).map((source, index) => Number(source.order || index + 1));
+
+  const handleToggleSource = (order, isOpen) => {
+    setExpandedSources((current) => {
+      const next = new Set(current);
+      if (isOpen) next.add(order);
+      else next.delete(order);
+      return next;
+    });
+  };
+
+  const handleCitationClick = (order) => {
+    const index = citationOrders.indexOf(order);
+    if (index >= 3) setShowAllSources(true);
+    setExpandedSources((current) => new Set(current).add(order));
+    window.setTimeout(() => {
+      sourceRefs.current.get(order)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 0);
+  };
 
   const startEditing = () => {
     setEditText(message.content);
@@ -195,10 +247,24 @@ const MessageRow = ({ message, isLastAI }) => {
           </div>
         ) : (
           <div className="markdown-content">
-            <MarkdownRenderer content={message.content} />
+            <MarkdownRenderer
+              citationOrders={citationOrders}
+              content={message.content}
+              onCitationClick={handleCitationClick}
+            />
           </div>
         )}
-        {!isEditing && <SourcePanel sources={message.sources} />}
+        {!isEditing && (
+          <SourcePanel
+            expandedSources={expandedSources}
+            onToggleSource={handleToggleSource}
+            retrievalStatus={message.ragStatus}
+            showAllSources={showAllSources}
+            sourceRefs={sourceRefs}
+            sources={message.sources}
+            toggleShowAllSources={() => setShowAllSources(open => !open)}
+          />
+        )}
         {message.status === "aborted" && (
           <div className="message-status aborted" role="status">已中断</div>
         )}

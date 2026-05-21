@@ -661,6 +661,18 @@ html[data-theme="dark"] .search-box {
     max-width: 920px;
 }
 
+.source-panel-empty,
+.source-status {
+    width: 100%;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.4;
+}
+
+.source-panel-empty {
+    padding: 8px 0;
+}
+
 .source-chip {
     max-width: min(100%, 420px);
     border: 1px solid var(--border-subtle);
@@ -672,7 +684,7 @@ html[data-theme="dark"] .search-box {
 
 .source-chip summary {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 7px;
     padding: 6px 9px;
@@ -698,9 +710,11 @@ html[data-theme="dark"] .search-box {
     white-space: nowrap;
 }
 
+.source-chunk,
 .source-score {
     color: var(--text-muted);
     font-size: 11.5px;
+    white-space: nowrap;
 }
 
 .source-chip p {
@@ -710,6 +724,52 @@ html[data-theme="dark"] .search-box {
     font-size: 12.5px;
     line-height: 1.45;
     white-space: normal;
+}
+
+.source-full-content {
+    max-height: 220px;
+    margin: 0;
+    padding: 0 9px 9px;
+    overflow: auto;
+    color: var(--text-secondary);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+}
+
+.source-toggle {
+    align-self: flex-start;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 6px 9px;
+    background: var(--surface-elevated);
+    color: var(--accent-strong);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12.5px;
+    line-height: 1.25;
+}
+
+.source-toggle:hover {
+    background: var(--surface-subtle);
+}
+
+.message-content .markdown-content .citation-link {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 5px;
+    padding: 0 3px;
+    background: transparent;
+    color: var(--accent-strong);
+    font-size: 0.92em;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.message-content .markdown-content .citation-link:hover {
+    background: transparent;
+    text-decoration: none;
 }
 
 .message-content .markdown-content h1,

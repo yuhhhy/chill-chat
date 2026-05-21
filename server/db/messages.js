@@ -8,8 +8,8 @@ const queries = {
   delete:  db.prepare('DELETE FROM messages WHERE id = ? AND session_id = ?'),
   listSources:    db.prepare('SELECT * FROM message_sources WHERE message_id = ? ORDER BY citation_order ASC'),
   insertSource:   db.prepare(`INSERT INTO message_sources (
-    id, message_id, chunk_id, citation_order, score, collection_id, document_id, document_name, chunk_index, excerpt
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+    id, message_id, chunk_id, citation_order, score, collection_id, document_id, document_name, chunk_index, excerpt, content
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
   deleteSources:  db.prepare('DELETE FROM message_sources WHERE message_id = ?')
 };
 
@@ -37,8 +37,8 @@ export function listMessageSources(messageId) {
   return queries.listSources.all(messageId);
 }
 
-export function insertMessageSource(id, messageId, chunkId, citationOrder, score, collectionId, documentId, documentName, chunkIndex, excerpt) {
-  queries.insertSource.run(id, messageId, chunkId, citationOrder, score, collectionId, documentId, documentName, chunkIndex, excerpt);
+export function insertMessageSource(id, messageId, chunkId, citationOrder, score, collectionId, documentId, documentName, chunkIndex, excerpt, content = '') {
+  queries.insertSource.run(id, messageId, chunkId, citationOrder, score, collectionId, documentId, documentName, chunkIndex, excerpt, content);
 }
 
 export function deleteMessageSources(messageId) {
@@ -66,7 +66,8 @@ export function insertMessagesInTransaction(sessionId, msgs) {
             source.documentId || source.document_id || '',
             source.documentName || source.document_name || 'Unknown source',
             Number(source.chunkIndex ?? source.chunk_index ?? 0),
-            source.excerpt || ''
+            source.excerpt || '',
+            source.content || ''
           );
         });
       }

@@ -34,7 +34,8 @@ export function getMessages(req, res) {
       documentId: source.document_id,
       documentName: source.document_name,
       chunkIndex: source.chunk_index,
-      excerpt: source.excerpt
+      excerpt: source.excerpt,
+      content: source.content || ''
     }))
   }));
   res.json(messages);

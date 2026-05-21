@@ -61,6 +61,7 @@ db.exec(`
     document_name TEXT NOT NULL,
     chunk_index INTEGER NOT NULL DEFAULT 0,
     excerpt TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
     FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
   );
@@ -74,6 +75,11 @@ const ragChunkColumns = db.prepare('PRAGMA table_info(rag_chunks)').all().map(co
 if (!ragChunkColumns.includes('parent_id')) {
   db.exec("ALTER TABLE rag_chunks ADD COLUMN parent_id TEXT");
   db.exec("CREATE INDEX IF NOT EXISTS idx_rag_chunks_parent ON rag_chunks(parent_id)");
+}
+
+const messageSourceColumns = db.prepare('PRAGMA table_info(message_sources)').all().map(column => column.name);
+if (!messageSourceColumns.includes('content')) {
+  db.exec("ALTER TABLE message_sources ADD COLUMN content TEXT NOT NULL DEFAULT ''");
 }
 
 const messageColumns = db.prepare('PRAGMA table_info(messages)').all().map(column => column.name);
