@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import './SettingsModal.css';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { assets } from '../../assets/assets';
@@ -6,6 +6,7 @@ import ModelAvatar from '../ModelAvatar/ModelAvatar';
 import { EditIcon } from '../icons/ActionIcons';
 import { modelProviderOptions } from '../../config/modelProviders';
 import { createCustomModel, deleteCustomModel, updateCustomModel } from '../../api/modelConfig';
+import { fetchRagConfig } from '../../api/rag';
 
 const settingsItems = [
   { id: 'general', label: '通用设置' },
@@ -37,6 +38,13 @@ const emptySystemPromptForm = {
   content: ''
 };
 
+function formatEmbeddingModel(model) {
+  if (!model) return '未配置';
+  if (model.includes('3-small')) return 'text-embedding-3-small';
+  if (model.includes('3-large')) return 'text-embedding-3-large';
+  return model;
+}
+
 const SettingsModal = ({ onClose }) => {
   const [activeSection, setActiveSection] = useState('general');
   const [isCustomModelEditorOpen, setIsCustomModelEditorOpen] = useState(false);
@@ -48,6 +56,8 @@ const SettingsModal = ({ onClose }) => {
   const [systemPromptEditor, setSystemPromptEditor] = useState(null);
   const [systemPromptForm, setSystemPromptForm] = useState(emptySystemPromptForm);
   const [systemPromptError, setSystemPromptError] = useState('');
+  const [ragConfig, setRagConfig] = useState(null);
+  const [ragConfigError, setRagConfigError] = useState('');
 
   const contextTurnCount = useSettingsStore(s => s.contextTurnCount);
   const createSystemPrompt = useSettingsStore(s => s.createSystemPrompt);
@@ -77,6 +87,24 @@ const SettingsModal = ({ onClose }) => {
     description: model.model || model.description
   }));
   const allModelOptions = [...modelProviderOptions, ...customModelOptions];
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchRagConfig()
+      .then((config) => {
+        if (!isMounted) return;
+        setRagConfig(config);
+        setRagConfigError('');
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        setRagConfigError(error.message || '读取失败');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const openCustomModelEditor = (model = null) => {
     setIsCustomModelEditorOpen(true);
@@ -353,6 +381,17 @@ const SettingsModal = ({ onClose }) => {
                   >
                     <span className="model-add-icon" aria-hidden="true">+</span>
                   </button>
+                </div>
+                <div className="embedding-model-row">
+                  <span className="settings-row-copy">
+                    <span className="settings-row-title">RAG Embedding 模型</span>
+                    <span className="settings-row-description">
+                      知识库检索向量化当前使用的模型。
+                    </span>
+                  </span>
+                  <span className="embedding-model-value">
+                    {ragConfigError || formatEmbeddingModel(ragConfig?.embedding?.model)}
+                  </span>
                 </div>
               </>
             ) : activeSection === 'prompts' ? (

@@ -1,10 +1,14 @@
 import https from 'https';
 import http from 'http';
 
-export function requestStream({ url, body, headers = {}, method = 'POST', timeout = 120000 }, onResponse) {
+export function requestStream({ url, body, headers = {}, method = 'POST', timeout = 120000, signal }, onResponse) {
   const endpoint = new URL(url);
   const payload = JSON.stringify(body);
   const transport = endpoint.protocol === 'http:' ? http : https;
+
+  if (signal?.aborted) {
+    throw new Error('索引已取消');
+  }
 
   const request = transport.request({
     hostname: endpoint.hostname,
@@ -21,39 +25,49 @@ export function requestStream({ url, body, headers = {}, method = 'POST', timeou
     }
   }, onResponse);
 
+  const abortRequest = () => request.destroy(new Error('索引已取消'));
+  signal?.addEventListener('abort', abortRequest, { once: true });
+  request.on('close', () => signal?.removeEventListener('abort', abortRequest));
+
   request.write(payload);
   request.end();
 
   return request;
 }
 
-export function requestJson({ url, body, headers = {}, timeout = 120000 }) {
+export function requestJson({ url, body, headers = {}, timeout = 120000, signal }) {
   return new Promise((resolve, reject) => {
-    const request = requestStream({ url, body, headers, timeout }, (res) => {
-      let data = '';
-      res.on('data', chunk => { data += chunk; });
-      res.on('end', () => {
-        let parsed;
-        try {
-          parsed = JSON.parse(data);
-        } catch {
-          parsed = null;
-        }
+    let request;
+    try {
+      request = requestStream({ url, body, headers, timeout, signal }, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          let parsed;
+          try {
+            parsed = JSON.parse(data);
+          } catch {
+            parsed = null;
+          }
 
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          const message = parsed?.error?.message || parsed?.error || data.trim() || `HTTP ${res.statusCode}`;
-          reject(new Error(message));
-          return;
-        }
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            const message = parsed?.error?.message || parsed?.error || data.trim() || `HTTP ${res.statusCode}`;
+            reject(new Error(message));
+            return;
+          }
 
-        if (!parsed) {
-          reject(new Error('响应不是合法 JSON'));
-          return;
-        }
+          if (!parsed) {
+            reject(new Error('响应不是合法 JSON'));
+            return;
+          }
 
-        resolve(parsed);
+          resolve(parsed);
+        });
       });
-    });
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     request.on('error', reject);
     request.on('timeout', () => {

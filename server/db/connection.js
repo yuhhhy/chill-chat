@@ -34,6 +34,7 @@ db.exec(`
     status TEXT NOT NULL DEFAULT 'pending',
     error_message TEXT NOT NULL DEFAULT '',
     chunk_count INTEGER NOT NULL DEFAULT 0,
+    embedding_model TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
     updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
     FOREIGN KEY (collection_id) REFERENCES rag_collections(id) ON DELETE CASCADE
@@ -85,6 +86,11 @@ if (!messageColumns.includes('model_provider')) {
 }
 if (!messageColumns.includes('status')) {
   db.exec("ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'");
+}
+
+const ragDocumentColumns = db.prepare('PRAGMA table_info(rag_documents)').all().map(column => column.name);
+if (!ragDocumentColumns.includes('embedding_model')) {
+  db.exec("ALTER TABLE rag_documents ADD COLUMN embedding_model TEXT NOT NULL DEFAULT ''");
 }
 
 export default db;

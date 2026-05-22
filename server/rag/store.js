@@ -1,14 +1,21 @@
 import { randomUUID } from 'crypto';
 import * as ragDb from '../db/rag.js';
 import { chunkText } from './chunking.js';
-import { createEmbeddings } from './embedding.js';
+import { createEmbeddings, getEmbeddingConfig } from './embedding.js';
 import { extractTextFromFile } from './fileParsers.js';
 
 const TOP_K = 8;
 const MIN_SCORE = 0.25;
 const MAX_CONTEXT_CHARS = 8000;
-const EMBEDDING_BATCH_SIZE = 16;
-const EMBEDDING_CONCURRENCY = 6;
+const DEFAULT_EMBEDDING_BATCH_SIZE = 16;
+const DEFAULT_EMBEDDING_CONCURRENCY = 6;
+const DEFAULT_CHUNK_SIZE = 800;
+const DEFAULT_CHUNK_OVERLAP = 150;
+
+function positiveIntegerFromEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 function toCollection(row) {
   return {
@@ -30,6 +37,7 @@ function toDocument(row) {
     mimeType: row.mime_type,
     size: row.size,
     status: row.status,
+    embeddingModel: row.embedding_model || '',
     errorMessage: row.error_message,
     chunkCount: row.chunk_count,
     createdAt: row.created_at,
@@ -57,9 +65,13 @@ function excerptFor(content) {
   return content.replace(/\s+/g, ' ').trim().slice(0, 360);
 }
 
-async function embedInBatches(chunks, onProgress) {
-  const batchSize = Math.max(1, Math.floor(EMBEDDING_BATCH_SIZE) || 16);
-  const concurrency = Math.max(1, Math.floor(EMBEDDING_CONCURRENCY) || 6);
+function assertNotCancelled(signal) {
+  if (signal?.aborted) throw new Error('索引已取消');
+}
+
+async function embedInBatches(chunks, onProgress, { signal } = {}) {
+  const batchSize = positiveIntegerFromEnv('EMBEDDING_BATCH_SIZE', DEFAULT_EMBEDDING_BATCH_SIZE);
+  const concurrency = positiveIntegerFromEnv('EMBEDDING_CONCURRENCY', DEFAULT_EMBEDDING_CONCURRENCY);
   const vectors = new Array(chunks.length);
   const batches = [];
 
@@ -75,10 +87,12 @@ async function embedInBatches(chunks, onProgress) {
 
   const worker = async () => {
     while (nextBatch < batches.length) {
+      assertNotCancelled(signal);
       const batch = batches[nextBatch];
       nextBatch += 1;
 
-      const batchVectors = await createEmbeddings(batch.texts);
+      const batchVectors = await createEmbeddings(batch.texts, { signal });
+      assertNotCancelled(signal);
       batchVectors.forEach((vector, offset) => {
         vectors[batch.start + offset] = vector;
       });
@@ -135,25 +149,52 @@ export function listDocuments(collectionId) {
   return ragDb.listDocuments(collectionId).map(toDocument);
 }
 
+export function getRagRuntimeConfig() {
+  return {
+    embedding: {
+      ...getEmbeddingConfig(),
+      batchSize: positiveIntegerFromEnv('EMBEDDING_BATCH_SIZE', DEFAULT_EMBEDDING_BATCH_SIZE),
+      concurrency: positiveIntegerFromEnv('EMBEDDING_CONCURRENCY', DEFAULT_EMBEDDING_CONCURRENCY)
+    },
+    chunking: {
+      chunkSize: positiveIntegerFromEnv('RAG_CHUNK_SIZE', DEFAULT_CHUNK_SIZE),
+      overlap: positiveIntegerFromEnv('RAG_CHUNK_OVERLAP', DEFAULT_CHUNK_OVERLAP)
+    }
+  };
+}
+
 export function createIndexingDocument(collectionId, file) {
   if (!ragDb.getCollection(collectionId)) throw new Error('知识库不存在');
 
   const documentId = randomUUID();
-  ragDb.insertDocument(documentId, collectionId, file.filename, file.mimeType, file.size, 'indexing');
+  ragDb.insertDocument(
+    documentId,
+    collectionId,
+    file.filename,
+    file.mimeType,
+    file.size,
+    'indexing',
+    getEmbeddingConfig().model
+  );
   ragDb.touchCollection(collectionId);
   return toDocument(ragDb.getDocument(documentId));
 }
 
-export async function processDocumentIndex(documentId, file, onProgress) {
+export async function processDocumentIndex(documentId, file, onProgress, { signal } = {}) {
   try {
     const indexingDocument = ragDb.getDocument(documentId);
     if (!indexingDocument) throw new Error('文档不存在');
 
     onProgress?.({ phase: 'parsing', current: 0, total: 0, percent: 5, message: '解析文档中' });
+    assertNotCancelled(signal);
     const text = await extractTextFromFile(file);
 
     onProgress?.({ phase: 'chunking', current: 0, total: 0, percent: 10, message: '分块中' });
-    const chunks = chunkText(text);
+    assertNotCancelled(signal);
+    const chunks = chunkText(text, {
+      chunkSize: positiveIntegerFromEnv('RAG_CHUNK_SIZE', DEFAULT_CHUNK_SIZE),
+      overlap: positiveIntegerFromEnv('RAG_CHUNK_OVERLAP', DEFAULT_CHUNK_OVERLAP)
+    });
     if (chunks.length === 0) throw new Error('文档没有可索引的文本内容');
     onProgress?.({
       phase: 'chunking',
@@ -163,14 +204,16 @@ export async function processDocumentIndex(documentId, file, onProgress) {
       message: `已切分 ${chunks.length} 个片段`
     });
 
-    const vectors = await embedInBatches(chunks, onProgress);
+    const vectors = await embedInBatches(chunks, onProgress, { signal });
+    assertNotCancelled(signal);
     ragDb.replaceDocumentChunks(documentId, indexingDocument.collection_id, chunks, vectors);
 
     const document = toDocument(ragDb.getDocument(documentId));
     onProgress?.({ phase: 'done', current: chunks.length, total: chunks.length, percent: 100, message: '索引完成', document });
     return document;
   } catch (error) {
-    ragDb.updateDocumentStatus('failed', error.message, 0, documentId);
+    const isCancelled = error.message === '索引已取消' || signal?.aborted;
+    ragDb.updateDocumentStatus(isCancelled ? 'canceled' : 'failed', error.message, 0, documentId);
     throw error;
   }
 }

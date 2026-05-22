@@ -446,6 +446,30 @@
     line-height: 1.4;
 }
 
+.embedding-model-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    min-height: 72px;
+    margin-top: 16px;
+    padding: 16px 18px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: var(--surface);
+}
+
+.embedding-model-value {
+    flex-shrink: 0;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--accent-strong);
+    font-size: 13px;
+    font-weight: 600;
+}
+
 .system-prompt-cancel {
     min-height: 34px;
     border: 1px solid var(--border-subtle);

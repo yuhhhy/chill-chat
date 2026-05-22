@@ -14,7 +14,14 @@ function resolveEmbeddingUrl() {
   return endpoint.toString();
 }
 
-export async function createEmbeddings(input) {
+export function getEmbeddingConfig() {
+  return {
+    model: process.env.EMBEDDING_MODEL || '',
+    url: resolveEmbeddingUrl()
+  };
+}
+
+export async function createEmbeddings(input, { signal } = {}) {
   const apiKey = process.env.EMBEDDING_API_KEY;
   const model = process.env.EMBEDDING_MODEL;
 
@@ -27,7 +34,8 @@ export async function createEmbeddings(input) {
   const parsed = await requestJson({
     url: resolveEmbeddingUrl(),
     body: { model, input: inputs },
-    headers: { Authorization: `Bearer ${apiKey}` }
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal
   });
 
   const vectors = parsed?.data

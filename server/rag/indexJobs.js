@@ -44,7 +44,7 @@ function appendEvent(job, type) {
     sendSse(subscriber.res, event);
   }
 
-  if (type === 'done' || type === 'error') {
+  if (type === 'done' || type === 'error' || type === 'cancel') {
     for (const subscriber of job.subscribers) {
       clearInterval(subscriber.heartbeat);
       subscriber.res.end();
@@ -64,6 +64,7 @@ function createJob(document) {
     message: '等待索引',
     document,
     error: '',
+    abortController: new AbortController(),
     events: [],
     subscribers: new Set(),
     createdAt: Date.now(),
@@ -81,6 +82,22 @@ function updateJob(jobId, patch = {}) {
 
   Object.assign(job, patch);
   appendEvent(job, 'progress');
+  return snapshot(job);
+}
+
+function cancelJob(jobId) {
+  const job = jobs.get(jobId);
+  if (!job || job.status !== 'running') return null;
+
+  job.abortController.abort();
+  Object.assign(job, {
+    status: 'cancelled',
+    phase: 'cancelled',
+    percent: 100,
+    message: '索引已取消',
+    error: '索引已取消'
+  });
+  appendEvent(job, 'cancel');
   return snapshot(job);
 }
 
@@ -116,6 +133,15 @@ function failJob(jobId, error, document) {
   });
   appendEvent(job, 'error');
   return snapshot(job);
+}
+
+function getSignal(jobId) {
+  return jobs.get(jobId)?.abortController.signal;
+}
+
+function isCancelled(jobId) {
+  const job = jobs.get(jobId);
+  return job?.status === 'cancelled' || job?.abortController.signal.aborted;
 }
 
 function subscribeJob(jobId, afterEventId, req, res) {
@@ -164,9 +190,12 @@ function cleanupJobs() {
 setInterval(cleanupJobs, 5 * 60 * 1000).unref?.();
 
 export const indexJobs = {
+  cancelJob,
   completeJob,
   createJob,
   failJob,
+  getSignal,
+  isCancelled,
   subscribeJob,
   updateJob
 };

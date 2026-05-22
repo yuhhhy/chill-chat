@@ -24,8 +24,8 @@ const queries = {
   listDocuments:     db.prepare('SELECT * FROM rag_documents WHERE collection_id = ? ORDER BY created_at DESC'),
   getDocument:       db.prepare('SELECT * FROM rag_documents WHERE id = ?'),
   insertDocument:    db.prepare(`INSERT INTO rag_documents (
-    id, collection_id, filename, mime_type, size, status
-  ) VALUES (?, ?, ?, ?, ?, ?)`),
+    id, collection_id, filename, mime_type, size, status, embedding_model
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)`),
   updateDocumentStatus: db.prepare(`UPDATE rag_documents
     SET status = ?, error_message = ?, chunk_count = ?, updated_at = unixepoch()
     WHERE id = ?`),
@@ -80,8 +80,8 @@ export function getDocument(id) {
   return queries.getDocument.get(id);
 }
 
-export function insertDocument(id, collectionId, filename, mimeType, size, status) {
-  queries.insertDocument.run(id, collectionId, filename, mimeType, size, status);
+export function insertDocument(id, collectionId, filename, mimeType, size, status, embeddingModel = '') {
+  queries.insertDocument.run(id, collectionId, filename, mimeType, size, status, embeddingModel);
 }
 
 export function updateDocumentStatus(status, errorMessage, chunkCount, id) {

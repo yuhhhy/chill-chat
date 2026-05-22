@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRagStore } from '../../stores/ragStore';
 import {
+  cancelRagIndexJob,
   createRagCollection,
   deleteRagCollection,
   deleteRagDocument,
   fetchDocumentChunks,
+  fetchRagConfig,
   fetchRagDocuments,
   subscribeRagIndexJob,
   updateRagCollection,
@@ -22,7 +24,15 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function formatEmbeddingModel(model) {
+  if (!model) return '未知模型';
+  if (model.includes('3-small')) return 'small';
+  if (model.includes('3-large')) return 'large';
+  return model;
+}
+
 const statusText = {
+  canceled: '已取消',
   failed: '失败',
   indexing: '索引中',
   pending: '等待中',
@@ -35,6 +45,7 @@ const emptyCollectionForm = {
 };
 
 const uploadStatusText = {
+  canceled: '已取消',
   done: '完成',
   error: '失败',
   indexing: '上传完成，索引中',
@@ -56,12 +67,12 @@ function getUploadStatusLabel(item) {
 
 function getItemProgress(item) {
   if (item.status === 'indexing') return Math.min(item.indexProgress || 0, 100);
-  if (item.status === 'done' || item.status === 'error') return 100;
+  if (item.status === 'done' || item.status === 'error' || item.status === 'canceled') return 100;
   return Math.min(item.progress || 0, 100);
 }
 
 function getItemOverallProgress(item) {
-  if (item.status === 'done' || item.status === 'error') return 100;
+  if (item.status === 'done' || item.status === 'error' || item.status === 'canceled') return 100;
   if (item.status === 'indexing') return 50 + (Math.min(item.indexProgress || 0, 100) / 2);
   if (item.status === 'uploading') return Math.min(item.progress || 0, 100) / 2;
   return 0;
@@ -106,6 +117,7 @@ const RagPage = () => {
   const [isSavingCollection, setIsSavingCollection] = useState(false);
   const [isCollectionMenuOpen, setIsCollectionMenuOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [ragConfig, setRagConfig] = useState(null);
   const [uploadItems, setUploadItems] = useState([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [error, setError] = useState('');
@@ -124,6 +136,12 @@ const RagPage = () => {
       setActiveCollectionId(ragCollections[0].id);
     }
   }, [activeCollectionId, ragCollections]);
+
+  useEffect(() => {
+    fetchRagConfig()
+      .then(setRagConfig)
+      .catch(() => setRagConfig(null));
+  }, []);
 
   useEffect(() => {
     if (!activeCollection?.id) {
@@ -220,6 +238,8 @@ const RagPage = () => {
       indexMessage: '',
       indexProgress: 0,
       indexTotal: 0,
+      isCanceling: false,
+      jobId: '',
       loaded: 0,
       name: file.name,
       progress: 0,
@@ -236,7 +256,7 @@ const RagPage = () => {
     };
 
     try {
-      let hasFailedUpload = false;
+      let failedCount = 0;
       for (const { file, id } of uploadEntries) {
         updateUploadItem(id, { status: 'uploading', progress: 0, loaded: 0, error: '' });
 
@@ -247,6 +267,7 @@ const RagPage = () => {
             }
           });
           const job = result.jobs?.[0];
+          updateUploadItem(id, { jobId: job?.id || '' });
           await waitForIndexJob(job?.id, (progress) => {
             updateUploadItem(id, {
               indexCurrent: progress.current || 0,
@@ -258,15 +279,23 @@ const RagPage = () => {
           });
           updateUploadItem(id, { loaded: file.size, progress: 100, status: 'done' });
         } catch (err) {
-          hasFailedUpload = true;
-          updateUploadItem(id, { loaded: file.size, progress: 100, status: 'error', error: err.message });
+          failedCount += 1;
+          const isCanceled = err.message === '索引已取消';
+          updateUploadItem(id, {
+            loaded: file.size,
+            progress: 100,
+            status: isCanceled ? 'canceled' : 'error',
+            error: isCanceled ? '' : err.message,
+            indexMessage: isCanceled ? '索引已取消' : '',
+            isCanceling: false
+          });
         }
       }
 
       await refreshRagCollections();
       setDocuments(await fetchRagDocuments(activeCollection.id));
 
-      if (!hasFailedUpload) {
+      if (failedCount === 0) {
         window.setTimeout(() => setUploadItems([]), 1600);
       }
     } catch (err) {
@@ -274,6 +303,26 @@ const RagPage = () => {
     } finally {
       setIsUploading(false);
       event.target.value = '';
+    }
+  };
+
+  const handleCancelUploadItem = async (item) => {
+    if (!item.jobId || item.isCanceling) return;
+
+    setUploadItems(prev => prev.map(uploadItem =>
+      uploadItem.id === item.id
+        ? { ...uploadItem, isCanceling: true, indexMessage: '正在取消…' }
+        : uploadItem
+    ));
+
+    try {
+      await cancelRagIndexJob(item.jobId);
+    } catch (err) {
+      setUploadItems(prev => prev.map(uploadItem =>
+        uploadItem.id === item.id
+          ? { ...uploadItem, isCanceling: false, error: err.message }
+          : uploadItem
+      ));
     }
   };
 
@@ -363,11 +412,14 @@ const RagPage = () => {
 
             {error && <div className="rag-error" role="alert">{error}</div>}
 
-            <div className="rag-upload-band">
-              <div>
-                <strong>上传并向量化</strong>
-                <p>支持 TXT、MD、PDF、DOCX</p>
-              </div>
+	            <div className="rag-upload-band">
+	              <div>
+	                <strong>上传并向量化</strong>
+	                <p>
+	                  支持 TXT、MD、PDF、DOCX
+	                  {ragConfig?.embedding?.model ? ` · ${ragConfig.embedding.model}` : ''}
+	                </p>
+	              </div>
               <input ref={fileInputRef} type="file" accept={ACCEPT} multiple onChange={handleUpload} hidden />
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
                 {isUploading ? '索引中…' : '选择文件'}
@@ -390,10 +442,22 @@ const RagPage = () => {
                 <div className="rag-upload-items">
                   {uploadItems.map(item => (
                     <div className="rag-upload-item" key={item.id}>
-                      <div className="rag-upload-item-head">
-                        <span>{item.name}</span>
-                        <small>{getUploadStatusLabel(item)}</small>
-                      </div>
+	                      <div className="rag-upload-item-head">
+	                        <span>{item.name}</span>
+	                        <div className="rag-upload-item-status">
+	                          <small>{getUploadStatusLabel(item)}</small>
+	                          {item.status === 'indexing' && item.jobId ? (
+	                            <button
+	                              type="button"
+	                              className="rag-upload-cancel"
+	                              onClick={() => handleCancelUploadItem(item)}
+	                              disabled={item.isCanceling}
+	                            >
+	                              {item.isCanceling ? '取消中' : '取消'}
+	                            </button>
+	                          ) : null}
+	                        </div>
+	                      </div>
                       <div className={`rag-progress-track small ${item.status === 'indexing' ? 'indexing' : ''}`}>
                         <span style={{ width: `${getItemProgress(item)}%` }} />
                       </div>
@@ -417,7 +481,10 @@ const RagPage = () => {
                     <article className="rag-document-row" key={document.id}>
                       <div>
                         <strong>{document.filename}</strong>
-                        <p>{formatSize(document.size)} · {document.chunkCount} chunks</p>
+                        <p>
+                          {formatSize(document.size)} · {document.chunkCount} chunks
+                          <span className="rag-document-model">embedding: {formatEmbeddingModel(document.embeddingModel)}</span>
+                        </p>
                         {document.errorMessage && <em>{document.errorMessage}</em>}
                       </div>
                       <span className={`rag-status ${document.status}`}>{statusText[document.status] || document.status}</span>

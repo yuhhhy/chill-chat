@@ -4,6 +4,10 @@ export function fetchRagCollections() {
   return apiGet('/api/rag/collections');
 }
 
+export function fetchRagConfig() {
+  return apiGet('/api/rag/config');
+}
+
 export function createRagCollection(data) {
   return apiPost('/api/rag/collections', data);
 }
@@ -112,6 +116,12 @@ export function subscribeRagIndexJob(jobId, { onDone, onError, onProgress } = {}
     }
   });
 
+  eventSource.addEventListener('cancel', (event) => {
+    const data = parseEvent(event);
+    onError?.(new Error(data.error || data.message || '索引已取消'), data);
+    eventSource.close();
+  });
+
   eventSource.onerror = () => {
     if (eventSource.readyState === EventSource.CLOSED) return;
     onError?.(new Error('索引进度连接断开'));
@@ -119,6 +129,10 @@ export function subscribeRagIndexJob(jobId, { onDone, onError, onProgress } = {}
   };
 
   return () => eventSource.close();
+}
+
+export function cancelRagIndexJob(jobId) {
+  return apiPatch(`/api/rag/index-jobs/${encodeURIComponent(jobId)}/cancel`, {});
 }
 
 export function deleteRagDocument(documentId) {

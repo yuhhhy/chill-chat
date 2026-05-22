@@ -4,6 +4,7 @@ import {
   deleteCollection,
   deleteDocument,
   getDocument,
+  getRagRuntimeConfig,
   listCollections,
   listDocuments,
   listDocumentChunks,
@@ -11,11 +12,16 @@ import {
   searchCollection,
   updateCollection
 } from '../rag/store.js';
+import { updateDocumentStatus } from '../db/rag.js';
 import { indexJobs } from '../rag/indexJobs.js';
 import { parseMultipartForm, readRequestBuffer } from '../rag/multipart.js';
 
 export function getRagCollections(req, res) {
   res.json(listCollections());
+}
+
+export function getRagConfig(req, res) {
+  res.json(getRagRuntimeConfig());
 }
 
 export async function createRagCollection(req, res) {
@@ -74,12 +80,14 @@ export async function uploadRagDocuments(req, res) {
             message: progress.message || '',
             document: progress.document || getDocument(document.id) || document
           });
-        })
+        }, { signal: indexJobs.getSignal(job.id) })
           .then((indexedDocument) => {
-            indexJobs.completeJob(job.id, indexedDocument);
+            if (!indexJobs.isCancelled(job.id)) indexJobs.completeJob(job.id, indexedDocument);
           })
           .catch((error) => {
-            indexJobs.failJob(job.id, error, getDocument(document.id) || document);
+            if (!indexJobs.isCancelled(job.id)) {
+              indexJobs.failJob(job.id, error, getDocument(document.id) || document);
+            }
           });
       });
     }
@@ -88,6 +96,20 @@ export async function uploadRagDocuments(req, res) {
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
+}
+
+export function cancelRagIndexJob(req, res) {
+  const job = indexJobs.cancelJob(req.params.jobId);
+  if (!job) {
+    res.status(404).json({ error: '索引任务不存在或已结束' });
+    return;
+  }
+
+  if (job.document?.id) {
+    updateDocumentStatus('canceled', '索引已取消', 0, job.document.id);
+  }
+
+  res.json(job);
 }
 
 export function subscribeRagIndexJob(req, res) {

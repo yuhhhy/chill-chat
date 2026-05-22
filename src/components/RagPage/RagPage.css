@@ -251,6 +251,13 @@
     gap: 16px;
 }
 
+.rag-upload-item-status {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .rag-upload-total span,
 .rag-upload-item-head span {
     min-width: 0;
@@ -261,10 +268,32 @@
 
 .rag-upload-total strong,
 .rag-upload-item-head small {
-    flex-shrink: 0;
     color: var(--rag-text-tertiary);
     font-size: 13px;
     font-weight: 400;
+}
+
+.rag-upload-cancel {
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--rag-border);
+    border-radius: var(--rag-radius-pill);
+    background: transparent;
+    color: var(--rag-text-secondary);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rag-upload-cancel:hover:not(:disabled) {
+    border-color: var(--rag-text-danger);
+    color: var(--rag-text-danger);
+}
+
+.rag-upload-cancel:disabled {
+    cursor: default;
+    color: var(--rag-text-tertiary);
 }
 
 .rag-progress-track {
@@ -399,6 +428,12 @@
     line-height: 1.4;
 }
 
+.rag-document-model {
+    display: inline-flex;
+    margin-left: 8px;
+    color: var(--rag-text-tertiary);
+}
+
 .rag-document-row em {
     display: block;
     margin-top: 8px;
@@ -455,7 +490,8 @@
 }
 
 .rag-status.indexing,
-.rag-status.pending {
+.rag-status.pending,
+.rag-status.canceled {
     color: var(--rag-text-tertiary);
 }
 
