@@ -45,8 +45,11 @@ const uploadStatusText = {
 function getUploadStatusLabel(item) {
   if (item.status === 'uploading') return `${uploadStatusText[item.status]} · ${Math.min(item.progress, 100)}%`;
   if (item.status === 'indexing') {
-    const detail = item.indexTotal > 0 ? ` · ${item.indexCurrent}/${item.indexTotal}` : '';
-    return `${item.indexMessage || uploadStatusText[item.status]}${detail}`;
+    const message = item.indexMessage || uploadStatusText[item.status];
+    const detail = item.indexTotal > 0 && !/\d+\s*\/\s*\d+/.test(message)
+      ? ` · ${item.indexCurrent}/${item.indexTotal}`
+      : '';
+    return `${message}${detail}`;
   }
   return uploadStatusText[item.status] || item.status;
 }

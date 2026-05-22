@@ -98,6 +98,10 @@ CLAUDE_API_KEY=your_claude_api_key_here
 CLAUDE_MODEL=claude-3-5-haiku-latest
 CLAUDE_API_VERSION=2023-06-01
 
+EMBEDDING_API_URL=https://api.openai.com/v1/embeddings
+EMBEDDING_API_KEY=your_embedding_api_key_here
+EMBEDDING_MODEL=text-embedding-3-small
+
 CUSTOM_MODELS=[]
 ```
 

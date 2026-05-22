@@ -1,14 +1,14 @@
 import { randomUUID } from 'crypto';
 import * as ragDb from '../db/rag.js';
-import { chunkTextHierarchical } from './chunking.js';
+import { chunkText } from './chunking.js';
 import { createEmbeddings } from './embedding.js';
 import { extractTextFromFile } from './fileParsers.js';
 
-const TOP_K = 6;
+const TOP_K = 8;
 const MIN_SCORE = 0.25;
 const MAX_CONTEXT_CHARS = 8000;
-const EMBEDDING_BATCH_SIZE = 1;
-const EMBEDDING_CONCURRENCY = 16;
+const EMBEDDING_BATCH_SIZE = 16;
+const EMBEDDING_CONCURRENCY = 6;
 
 function toCollection(row) {
   return {
@@ -58,33 +58,51 @@ function excerptFor(content) {
 }
 
 async function embedInBatches(chunks, onProgress) {
+  const batchSize = Math.max(1, Math.floor(EMBEDDING_BATCH_SIZE) || 16);
+  const concurrency = Math.max(1, Math.floor(EMBEDDING_CONCURRENCY) || 6);
+  const vectors = new Array(chunks.length);
   const batches = [];
-  for (let i = 0; i < chunks.length; i += EMBEDDING_BATCH_SIZE) {
-    batches.push(chunks.slice(i, i + EMBEDDING_BATCH_SIZE));
+
+  for (let i = 0; i < chunks.length; i += batchSize) {
+    batches.push({
+      start: i,
+      texts: chunks.slice(i, i + batchSize)
+    });
   }
 
-  const results = new Array(batches.length);
-  let completedBatches = 0;
-  const queue = batches.map((texts, index) => ({ texts, index }));
+  let completed = 0;
+  let nextBatch = 0;
 
   const worker = async () => {
-    while (queue.length > 0) {
-      const task = queue.shift();
-      if (!task) break;
-      results[task.index] = await createEmbeddings(task.texts);
-      completedBatches += 1;
+    while (nextBatch < batches.length) {
+      const batch = batches[nextBatch];
+      nextBatch += 1;
+
+      const batchVectors = await createEmbeddings(batch.texts);
+      batchVectors.forEach((vector, offset) => {
+        vectors[batch.start + offset] = vector;
+      });
+
+      completed += batchVectors.length;
+      const current = Math.min(completed, chunks.length);
+
       onProgress?.({
         phase: 'embedding',
-        current: completedBatches,
-        total: batches.length,
-        percent: Math.round((completedBatches / batches.length) * 100),
-        message: `向量化中 ${completedBatches}/${batches.length}`
+        current,
+        total: chunks.length,
+        percent: Math.round((current / chunks.length) * 100),
+        message: `向量化中 ${current}/${chunks.length}`
       });
     }
   };
 
-  await Promise.all(Array.from({ length: Math.min(EMBEDDING_CONCURRENCY, batches.length) }, worker));
-  return results.flat();
+  await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, worker));
+
+  if (vectors.some(vector => !Array.isArray(vector))) {
+    throw new Error('Embedding 向量数量与分块数量不一致');
+  }
+
+  return vectors;
 }
 
 export function listCollections() {
@@ -135,21 +153,21 @@ export async function processDocumentIndex(documentId, file, onProgress) {
     const text = await extractTextFromFile(file);
 
     onProgress?.({ phase: 'chunking', current: 0, total: 0, percent: 10, message: '分块中' });
-    const { parents, children } = chunkTextHierarchical(text);
-    if (parents.length === 0) throw new Error('文档没有可索引的文本内容');
+    const chunks = chunkText(text);
+    if (chunks.length === 0) throw new Error('文档没有可索引的文本内容');
     onProgress?.({
       phase: 'chunking',
-      current: parents.length,
-      total: parents.length,
+      current: chunks.length,
+      total: chunks.length,
       percent: 15,
-      message: `已切分 ${parents.length} 个父片段，${children.length} 个子片段`
+      message: `已切分 ${chunks.length} 个片段`
     });
 
-    const childVectors = await embedInBatches(children.map(c => c.content), onProgress);
-    ragDb.replaceDocumentChunks(documentId, indexingDocument.collection_id, parents, children, childVectors);
+    const vectors = await embedInBatches(chunks, onProgress);
+    ragDb.replaceDocumentChunks(documentId, indexingDocument.collection_id, chunks, vectors);
 
     const document = toDocument(ragDb.getDocument(documentId));
-    onProgress?.({ phase: 'done', current: parents.length, total: parents.length, percent: 100, message: '索引完成', document });
+    onProgress?.({ phase: 'done', current: chunks.length, total: chunks.length, percent: 100, message: '索引完成', document });
     return document;
   } catch (error) {
     ragDb.updateDocumentStatus('failed', error.message, 0, documentId);
@@ -185,49 +203,30 @@ export async function searchCollection(collectionId, query, { topK = TOP_K, minS
   const [queryVector] = await createEmbeddings(text);
   const rows = ragDb.listChunksForCollection(collectionId);
 
-  // Score every child chunk (rows with embedding != '')
-  const scored = rows
+  return rows
     .map((row) => {
       let embedding = [];
-      try { embedding = JSON.parse(row.embedding); } catch { embedding = []; }
-      return { row, score: cosineSimilarity(queryVector, embedding) };
-    })
-    .filter(r => r.score >= minScore)
-    .sort((a, b) => b.score - a.score);
-
-  // Deduplicate by parent — keep highest-scoring child per parent
-  const bestByParent = new Map();
-  for (const item of scored) {
-    const key = item.row.parent_id || item.row.id;
-    if (!bestByParent.has(key) || bestByParent.get(key).score < item.score) {
-      bestByParent.set(key, item);
-    }
-  }
-
-  return [...bestByParent.values()]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .map((item, index) => {
-      const row = item.row;
-      // Retrieve parent content for context; fall back to child content (legacy data)
-      let content = row.content;
-      let chunkIndex = row.chunk_index;
-      if (row.parent_id) {
-        const parent = ragDb.getChunkById(row.parent_id);
-        if (parent) { content = parent.content; chunkIndex = parent.chunk_index; }
+      try {
+        embedding = JSON.parse(row.embedding);
+      } catch {
+        embedding = [];
       }
+
       return {
-        chunkId: row.parent_id || row.id,
+        chunkId: row.id,
         collectionId: row.collection_id,
         documentId: row.document_id,
         documentName: row.document_name,
-        chunkIndex,
-        content,
-        excerpt: excerptFor(content),
-        score: item.score,
-        order: index + 1
+        chunkIndex: row.chunk_index,
+        content: row.content,
+        excerpt: excerptFor(row.content),
+        score: cosineSimilarity(queryVector, embedding)
       };
-    });
+    })
+    .filter(result => result.score >= minScore)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map((result, index) => ({ ...result, order: index + 1 }));
 }
 
 export async function buildRagContext(collectionId, messages) {
@@ -269,6 +268,6 @@ export async function buildRagContext(collectionId, messages) {
 }
 
 export const ragInternals = {
-  chunkTextHierarchical,
+  chunkText,
   cosineSimilarity
 };

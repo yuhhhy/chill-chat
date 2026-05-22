@@ -1,5 +1,10 @@
 import db from './connection.js';
 
+const ragChunkColumns = db.prepare('PRAGMA table_info(rag_chunks)').all().map(column => column.name);
+const hasLegacyParentId = ragChunkColumns.includes('parent_id');
+const legacyPlainChunkFilter = hasLegacyParentId ? "AND (ch.parent_id IS NULL OR ch.parent_id = '')" : '';
+const legacyPlainDocumentChunkFilter = hasLegacyParentId ? "AND (parent_id IS NULL OR parent_id = '')" : '';
+
 const queries = {
   listCollections: db.prepare(`
     SELECT c.*,
@@ -7,7 +12,7 @@ const queries = {
       COUNT(ch.id) AS chunk_count
     FROM rag_collections c
     LEFT JOIN rag_documents d ON d.collection_id = c.id
-    LEFT JOIN rag_chunks ch ON ch.document_id = d.id
+    LEFT JOIN rag_chunks ch ON ch.document_id = d.id ${legacyPlainChunkFilter}
     GROUP BY c.id
     ORDER BY c.updated_at DESC, c.created_at DESC
   `),
@@ -26,23 +31,19 @@ const queries = {
     WHERE id = ?`),
   deleteDocument:       db.prepare('DELETE FROM rag_documents WHERE id = ?'),
   deleteDocumentChunks: db.prepare('DELETE FROM rag_chunks WHERE document_id = ?'),
-  insertParentChunk: db.prepare(`INSERT INTO rag_chunks (
-    id, document_id, collection_id, chunk_index, content, char_count, embedding
-  ) VALUES (?, ?, ?, ?, ?, ?, '')`),
   insertChunk: db.prepare(`INSERT INTO rag_chunks (
-    id, document_id, collection_id, chunk_index, content, char_count, embedding, parent_id
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
-  getChunkById: db.prepare('SELECT * FROM rag_chunks WHERE id = ?'),
+    id, document_id, collection_id, chunk_index, content, char_count, embedding
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)`),
   listChunksForCollection: db.prepare(`
     SELECT ch.*, d.filename AS document_name
     FROM rag_chunks ch
     JOIN rag_documents d ON d.id = ch.document_id
-    WHERE ch.collection_id = ? AND ch.embedding != ''
+    WHERE ch.collection_id = ? ${legacyPlainChunkFilter}
   `),
   listChunksForDocument: db.prepare(`
     SELECT id, document_id, collection_id, chunk_index, content, char_count, created_at
     FROM rag_chunks
-    WHERE document_id = ? AND (parent_id IS NULL OR parent_id = '')
+    WHERE document_id = ? ${legacyPlainDocumentChunkFilter}
     ORDER BY chunk_index ASC
   `)
 };
@@ -95,16 +96,8 @@ export function deleteDocumentChunks(documentId) {
   queries.deleteDocumentChunks.run(documentId);
 }
 
-export function insertParentChunk(id, documentId, collectionId, chunkIndex, content, charCount) {
-  queries.insertParentChunk.run(id, documentId, collectionId, chunkIndex, content, charCount);
-}
-
-export function insertChunk(id, documentId, collectionId, chunkIndex, content, charCount, embedding, parentId) {
-  queries.insertChunk.run(id, documentId, collectionId, chunkIndex, content, charCount, embedding, parentId);
-}
-
-export function getChunkById(id) {
-  return queries.getChunkById.get(id);
+export function insertChunk(id, documentId, collectionId, chunkIndex, content, charCount, embedding) {
+  queries.insertChunk.run(id, documentId, collectionId, chunkIndex, content, charCount, embedding);
 }
 
 export function listChunksForCollection(collectionId) {
@@ -115,30 +108,21 @@ export function listChunksForDocument(documentId) {
   return queries.listChunksForDocument.all(documentId);
 }
 
-export function replaceDocumentChunks(documentId, collectionId, parents, children, childVectors) {
+export function replaceDocumentChunks(documentId, collectionId, chunks, vectors) {
   const replace = db.transaction(() => {
     deleteDocumentChunks(documentId);
-
-    const parentIds = parents.map((content, index) => {
-      const id = crypto.randomUUID();
-      insertParentChunk(id, documentId, collectionId, index, content, content.length);
-      return id;
-    });
-
-    children.forEach((child, index) => {
+    chunks.forEach((content, index) => {
       insertChunk(
         crypto.randomUUID(),
         documentId,
         collectionId,
         index,
-        child.content,
-        child.content.length,
-        JSON.stringify(childVectors[index]),
-        parentIds[child.parentIndex]
+        content,
+        content.length,
+        JSON.stringify(vectors[index])
       );
     });
-
-    updateDocumentStatus('ready', '', parents.length, documentId);
+    updateDocumentStatus('ready', '', chunks.length, documentId);
     touchCollection(collectionId);
   });
   replace();
