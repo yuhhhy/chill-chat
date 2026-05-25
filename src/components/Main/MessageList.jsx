@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { useChatStore } from "../../stores/chatStore";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -22,6 +22,43 @@ const RegenerateIcon = () => (
     <path d="M18 21v-4h-4" />
   </svg>
 );
+
+const thinkingStatusMessages = [
+  "思考中",
+  "少女祈祷中",
+  "正在烧高香，祈求 GPU 不过热",
+  "AI 正在抽卡",
+  "正在与服务器搏斗",
+  "正在翻越防火长城",
+  "向量空间迷路中",
+  "Token 正在排队",
+  "正在打开次元裂缝",
+];
+
+const getRandomThinkingStatusIndex = (excludedIndex = -1) => {
+  if (thinkingStatusMessages.length <= 1) return 0;
+
+  let nextIndex = excludedIndex;
+  while (nextIndex === excludedIndex) {
+    nextIndex = Math.floor(Math.random() * thinkingStatusMessages.length);
+  }
+
+  return nextIndex;
+};
+
+const RotatingThinkingStatus = () => {
+  const [messageIndex, setMessageIndex] = useState(() => getRandomThinkingStatusIndex());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setMessageIndex((current) => getRandomThinkingStatusIndex(current));
+    }, 2200);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <span>{thinkingStatusMessages[messageIndex]}</span>;
+};
 
 const ReasoningPanel = ({ content, isGenerating }) => {
   if (!content) return null;
@@ -191,6 +228,12 @@ const MessageRow = ({ message, isLastAI }) => {
                 <textarea
                   value={editText}
                   onChange={(event) => setEditText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      if (!isSavingEdit && !isGenerating && editText.trim()) handleSaveEdit();
+                    }
+                  }}
                   autoFocus
                   rows={Math.min(Math.max(editText.split('\n').length, 2), 8)}
                 />
@@ -230,6 +273,12 @@ const MessageRow = ({ message, isLastAI }) => {
             <textarea
               value={editText}
               onChange={(event) => setEditText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  if (!isSavingEdit && editText.trim()) handleSaveEdit();
+                }
+              }}
               autoFocus
               rows={Math.min(Math.max(editText.split('\n').length, 3), 12)}
             />
@@ -243,7 +292,7 @@ const MessageRow = ({ message, isLastAI }) => {
         ) : isMessageGenerating && !message.content ? (
           <div className="thinking-indicator">
             <div className="thinking-spinner" />
-            <span>{message.reasoningContent ? "正在生成回复" : "思考中"}</span>
+            {message.reasoningContent ? <span>正在生成回复</span> : <RotatingThinkingStatus />}
           </div>
         ) : (
           <div className="markdown-content">
