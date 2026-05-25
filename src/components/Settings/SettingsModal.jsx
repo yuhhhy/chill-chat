@@ -63,6 +63,7 @@ const SettingsModal = ({ onClose }) => {
   const createSystemPrompt = useSettingsStore(s => s.createSystemPrompt);
   const customModels = useSettingsStore(s => s.customModels);
   const deleteSystemPrompt = useSettingsStore(s => s.deleteSystemPrompt);
+  const loadSystemPrompts = useSettingsStore(s => s.loadSystemPrompts);
   const modelProvider = useSettingsStore(s => s.modelProvider);
   const refreshModelConfig = useSettingsStore(s => s.refreshModelConfig);
   const setContextTurnCount = useSettingsStore(s => s.setContextTurnCount);
@@ -90,6 +91,7 @@ const SettingsModal = ({ onClose }) => {
 
   useEffect(() => {
     let isMounted = true;
+    loadSystemPrompts().catch(() => {});
     fetchRagConfig()
       .then((config) => {
         if (!isMounted) return;
@@ -135,7 +137,7 @@ const SettingsModal = ({ onClose }) => {
     setSystemPromptForm((current) => ({ ...current, [field]: value }));
   };
 
-  const saveSystemPrompt = (event) => {
+  const saveSystemPrompt = async (event) => {
     event.preventDefault();
 
     const title = systemPromptForm.title.trim();
@@ -150,24 +152,27 @@ const SettingsModal = ({ onClose }) => {
       return;
     }
 
-    if (systemPromptEditor) {
-      updateSystemPrompt(systemPromptEditor.id, { title, content });
-    } else {
-      const prompt = createSystemPrompt({ title, content });
-      setSelectedSystemPromptId(prompt.id);
+    try {
+      if (systemPromptEditor) {
+        await updateSystemPrompt(systemPromptEditor.id, { title, content });
+      } else {
+        const prompt = await createSystemPrompt({ title, content });
+        setSelectedSystemPromptId(prompt.id);
+      }
+      setSystemPromptEditor(null);
+      setSystemPromptForm(emptySystemPromptForm);
+      setSystemPromptError('');
+    } catch {
+      setSystemPromptError('保存失败，请重试');
     }
-
-    setSystemPromptEditor(null);
-    setSystemPromptForm(emptySystemPromptForm);
-    setSystemPromptError('');
   };
 
-  const removeSystemPrompt = (promptId) => {
+  const removeSystemPrompt = async (promptId) => {
     const targetPrompt = systemPrompts.find(prompt => prompt.id === promptId);
     const confirmed = window.confirm(`确定要删除提示词「${targetPrompt?.title || '未命名'}」吗？`);
     if (!confirmed) return;
 
-    deleteSystemPrompt(promptId);
+    await deleteSystemPrompt(promptId);
     if (systemPromptEditor?.id === promptId) {
       setSystemPromptEditor(null);
       setSystemPromptForm(emptySystemPromptForm);

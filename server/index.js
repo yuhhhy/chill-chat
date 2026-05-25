@@ -5,6 +5,7 @@ import messagesRouter from './routes/messages.js';
 import chatRunsRouter from './routes/chatRuns.js';
 import modelConfigRouter from './routes/modelConfig.js';
 import ragRouter from './routes/rag.js';
+import promptsRouter from './routes/prompts.js';
 
 dotenv.config();
 
@@ -28,5 +29,6 @@ app.use('/api/sessions/:sessionId/messages', messagesRouter);
 app.use('/api/chat-runs', chatRunsRouter);
 app.use('/api/config', modelConfigRouter);
 app.use('/api/rag', ragRouter);
+app.use('/api/prompts', promptsRouter);
 
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

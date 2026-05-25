@@ -2,7 +2,16 @@ import db from './connection.js';
 
 const queries = {
   list:    db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC'),
-  insert:  db.prepare('INSERT INTO messages (id, session_id, role, content, reasoning_content, model_provider, status) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+  insert:  db.prepare(`
+    INSERT INTO messages (id, session_id, role, content, reasoning_content, model_provider, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      content = excluded.content,
+      reasoning_content = excluded.reasoning_content,
+      model_provider = excluded.model_provider,
+      status = excluded.status
+    WHERE messages.session_id = excluded.session_id
+  `),
   count:   db.prepare('SELECT COUNT(*) as count FROM messages WHERE session_id = ?'),
   update:  db.prepare('UPDATE messages SET content = ? WHERE id = ? AND session_id = ?'),
   delete:  db.prepare('DELETE FROM messages WHERE id = ? AND session_id = ?'),
@@ -18,7 +27,7 @@ export function listMessages(sessionId) {
 }
 
 export function insertMessage(id, sessionId, role, content, reasoningContent, modelProvider, status) {
-  queries.insert.run(id, sessionId, role, content, reasoningContent, modelProvider, status);
+  return queries.insert.run(id, sessionId, role, content, reasoningContent, modelProvider, status);
 }
 
 export function countMessages(sessionId) {
@@ -52,7 +61,8 @@ export function insertMessagesInTransaction(sessionId, msgs) {
       const modelProvider = msg.modelProvider ?? msg.model_provider ?? '';
       const status = msg.status ?? 'completed';
       const messageId = msg.id || crypto.randomUUID();
-      insertMessage(messageId, sessionId, msg.role, msg.content, reasoningContent, modelProvider, status);
+      const result = insertMessage(messageId, sessionId, msg.role, msg.content, reasoningContent, modelProvider, status);
+      if (result.changes === 0) continue;
       deleteMessageSources(messageId);
       if (Array.isArray(msg.sources)) {
         msg.sources.slice(0, 12).forEach((source, index) => {

@@ -1,12 +1,13 @@
 import { create } from 'zustand';
-import { fetchMessages, saveMessages, updateMessage as updateMessageApi, deleteMessage as deleteMessageApi } from '../api/messages.js';
-import { createChatRun, cancelChatRun } from '../api/chatRuns.js';
+import { fetchMessages, saveMessages, saveMessagesOnUnload, updateMessage as updateMessageApi, deleteMessage as deleteMessageApi } from '../api/messages.js';
+import { createChatRun, fetchChatRun, cancelChatRun } from '../api/chatRuns.js';
 import StreamParser from '../services/streamParser.js';
 import { useSessionStore } from './sessionStore.js';
 import { useSettingsStore } from './settingsStore.js';
 import { useRagStore } from './ragStore.js';
 
 const PENDING_KEY = 'chill-chat:pending-deleted-messages';
+const ACTIVE_RUNS_KEY = 'chill-chat:active-runs';
 
 function toViewMessage(m) {
   return {
@@ -57,6 +58,42 @@ function getPendingIds(sessionId) {
   return new Set(readPending()[sessionId] || []);
 }
 
+function readActiveRuns() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(ACTIVE_RUNS_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch { return {}; }
+}
+
+function writeActiveRuns(activeRuns) {
+  const hasActiveRuns = Object.keys(activeRuns).length > 0;
+  if (!hasActiveRuns) {
+    window.localStorage.removeItem(ACTIVE_RUNS_KEY);
+  } else {
+    window.localStorage.setItem(ACTIVE_RUNS_KEY, JSON.stringify(activeRuns));
+  }
+}
+
+function rememberActiveRun(sessionId, meta) {
+  const activeRuns = readActiveRuns();
+  activeRuns[sessionId] = { ...meta, updatedAt: Date.now() };
+  writeActiveRuns(activeRuns);
+}
+
+function getRememberedActiveRun(sessionId) {
+  return readActiveRuns()[sessionId] || null;
+}
+
+function forgetActiveRun(sessionId) {
+  const activeRuns = readActiveRuns();
+  delete activeRuns[sessionId];
+  writeActiveRuns(activeRuns);
+}
+
+function markStaleGeneratingAsAborted(messages) {
+  return messages.map(msg => msg.status === 'generating' ? { ...msg, status: 'aborted' } : msg);
+}
+
 function limitContext(messages, contextTurnCount) {
   if (contextTurnCount === -1) return messages;
   const userIndexes = messages.reduce((acc, msg, i) => {
@@ -82,13 +119,10 @@ function buildApiMessages(messages, contextTurnCount) {
 const generatingSessions = new Map();
 const sessionMessages = new Map();
 const streamParsers = new Map();
+const activeAssistantDrafts = new Map();
 
-function persistPartial(parser, sessionId, message, status = 'aborted') {
-  if (!message || parser?.assistantPersisted) return;
-  if (!message.content?.trim() && !message.reasoningContent?.trim()) return;
-  if (parser) parser.assistantPersisted = true;
-  const provider = useSettingsStore.getState().modelProvider;
-  saveMessages(sessionId, [{
+function toPersistedAssistantMessage(message, provider, status) {
+  return {
     id: message.id,
     role: 'assistant',
     content: message.content || '',
@@ -96,7 +130,30 @@ function persistPartial(parser, sessionId, message, status = 'aborted') {
     modelProvider: message.modelProvider || provider,
     sources: message.sources || [],
     status
-  }]).catch(err => console.error('Failed to save partial assistant message:', err));
+  };
+}
+
+function persistPartial(_parser, sessionId, message, status = 'aborted') {
+  if (!message) return;
+  if (!message.content?.trim() && !message.reasoningContent?.trim()) return;
+  const provider = useSettingsStore.getState().modelProvider;
+  saveMessages(sessionId, [toPersistedAssistantMessage(message, provider, status)])
+    .catch(err => console.error('Failed to save partial assistant message:', err));
+}
+
+function flushActiveAssistantDraftsOnUnload() {
+  for (const parser of streamParsers.values()) {
+    parser.flushAll?.();
+  }
+
+  for (const [sessionId, draft] of activeAssistantDrafts) {
+    if (!draft.content?.trim() && !draft.reasoningContent?.trim()) continue;
+    saveMessagesOnUnload(sessionId, [toPersistedAssistantMessage(draft, draft.modelProvider, 'generating')]);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushActiveAssistantDraftsOnUnload);
 }
 
 export const useChatStore = create((set, get) => ({
@@ -108,6 +165,8 @@ export const useChatStore = create((set, get) => ({
     if (!sessionId) return;
 
     const currentSessionId = () => useSessionStore.getState().currentSessionId;
+    const rememberedRun = getRememberedActiveRun(sessionId);
+    let resumableRun = null;
 
     if (generatingSessions.has(sessionId) && sessionMessages.has(sessionId)) {
       set({
@@ -129,10 +188,57 @@ export const useChatStore = create((set, get) => ({
 
     const rows = await fetchMessages(sessionId);
     if (currentSessionId() !== sessionId) return;
+    let viewMessages = rows.filter(r => !pendingIds.has(r.id)).map(toViewMessage);
+
+    if (rememberedRun?.runId) {
+      try {
+        const run = await fetchChatRun(rememberedRun.runId);
+        if (run?.sessionId === sessionId) {
+          resumableRun = { ...rememberedRun, ...run };
+        } else {
+          forgetActiveRun(sessionId);
+        }
+      } catch (err) {
+        forgetActiveRun(sessionId);
+        console.warn('Active chat run is no longer resumable:', err);
+      }
+    }
+
+    if (!resumableRun) {
+      viewMessages = markStaleGeneratingAsAborted(viewMessages);
+    }
+
     set({
-      messages: rows.filter(r => !pendingIds.has(r.id)).map(toViewMessage),
-      isLoadingMessages: false
+      messages: viewMessages,
+      isLoadingMessages: false,
+      isGenerating: Boolean(resumableRun && resumableRun.status === 'running')
     });
+
+    if (resumableRun) {
+      const assistantMessageId = resumableRun.assistantMessageId;
+      const existingAssistant = viewMessages.find(msg => msg.id === assistantMessageId);
+      const provider = resumableRun.provider || existingAssistant?.modelProvider || useSettingsStore.getState().modelProvider;
+      const aiMessage = existingAssistant || {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        modelProvider: provider,
+        ragStatus: '',
+        reasoningContent: '',
+        sources: [],
+        timestamp: new Date().toLocaleString(),
+        status: 'generating'
+      };
+      const stateWithAssistant = existingAssistant
+        ? viewMessages.map(msg => msg.id === assistantMessageId ? { ...msg, status: 'generating' } : msg)
+        : [...viewMessages, aiMessage];
+
+      set({ messages: stateWithAssistant, isGenerating: resumableRun.status === 'running' });
+      runStream([], stateWithAssistant, { ...aiMessage, status: 'generating' }, sessionId, provider, resumableRun.ragCollectionId || '', {
+        runId: resumableRun.runId,
+        replay: true
+      }).catch(err => console.error('Failed to resume chat run:', err));
+    }
   },
 
   send: async (messageText) => {
@@ -229,6 +335,8 @@ export const useChatStore = create((set, get) => ({
     }
     generatingSessions.delete(sessionId);
     sessionMessages.delete(sessionId);
+    activeAssistantDrafts.delete(sessionId);
+    forgetActiveRun(sessionId);
     set(state => ({
       isGenerating: false,
       messages: state.messages.map(msg =>
@@ -327,14 +435,17 @@ export const useChatStore = create((set, get) => ({
   }
 }));
 
-async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId, provider, ragCollectionId = '') {
+async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId, provider, ragCollectionId = '', options = {}) {
   let streamedContent = '';
   let streamedReasoning = '';
   let retrievedSources = [];
   let ragStatus = '';
+  let partialSaveTimer = null;
+  let lastSavedPartial = '';
 
   generatingSessions.set(sessionId, true);
   sessionMessages.set(sessionId, stateWithPlaceholder);
+  activeAssistantDrafts.set(sessionId, aiMessage);
 
   const parser = new StreamParser();
   streamParsers.set(sessionId, parser);
@@ -351,17 +462,67 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
   };
 
   const finishGeneration = () => {
+    if (partialSaveTimer) {
+      clearTimeout(partialSaveTimer);
+      partialSaveTimer = null;
+    }
     generatingSessions.delete(sessionId);
     sessionMessages.delete(sessionId);
     streamParsers.delete(sessionId);
+    activeAssistantDrafts.delete(sessionId);
     if (currentSessionId() === sessionId) {
       useChatStore.setState({ isGenerating: false });
     }
   };
 
+  const updateActiveDraft = (status = 'generating') => {
+    activeAssistantDrafts.set(sessionId, {
+      ...aiMessage,
+      content: streamedContent,
+      reasoningContent: streamedReasoning,
+      ragStatus,
+      sources: retrievedSources,
+      status
+    });
+  };
+
+  const savePartialDraft = (status = 'generating') => {
+    if (!streamedContent.trim() && !streamedReasoning.trim()) return;
+
+    const message = activeAssistantDrafts.get(sessionId);
+    if (!message) return;
+
+    const persisted = toPersistedAssistantMessage(message, provider, status);
+    const signature = JSON.stringify(persisted);
+    if (signature === lastSavedPartial) return;
+
+    lastSavedPartial = signature;
+    saveMessages(sessionId, [persisted])
+      .catch(err => console.error('Failed to save streaming assistant draft:', err));
+  };
+
+  const schedulePartialSave = () => {
+    if (partialSaveTimer) return;
+    partialSaveTimer = setTimeout(() => {
+      partialSaveTimer = null;
+      savePartialDraft('generating');
+    }, 750);
+  };
+
   try {
-    const { runId } = await createChatRun(apiMessages, provider, ragCollectionId);
+    const { runId } = options.runId
+      ? { runId: options.runId }
+      : await createChatRun(apiMessages, provider, ragCollectionId, {
+        sessionId,
+        assistantMessageId: aiMessage.id
+      });
     parser.runId = runId;
+    rememberActiveRun(sessionId, {
+      runId,
+      assistantMessageId: aiMessage.id,
+      provider,
+      ragCollectionId
+    });
 
     await parser.fetchRunEvents(
       runId,
@@ -378,15 +539,20 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
           streamedContent += chunkContent;
         }
 
+        updateActiveDraft('generating');
+        schedulePartialSave();
         syncMessages(prev => prev.map(msg =>
           msg.id === aiMessage.id
-            ? { ...msg, content: streamedContent, ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
+            ? { ...msg, content: streamedContent, ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources, status: 'generating' }
             : msg
         ));
       },
       (error) => {
         console.error('Stream error:', error);
+        updateActiveDraft('failed');
+        savePartialDraft('failed');
         finishGeneration();
+        forgetActiveRun(sessionId);
         syncMessages(prev => prev.map(msg =>
           msg.id === aiMessage.id
             ? { ...msg, status: 'failed', content: streamedContent || '生成失败，请重试', ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
@@ -396,6 +562,7 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
       () => {
         if (!streamedContent.trim()) {
           finishGeneration();
+          forgetActiveRun(sessionId);
           syncMessages(prev => prev.map(msg =>
             msg.id === aiMessage.id
               ? { ...msg, status: 'failed', content: '生成失败，请重试', ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
@@ -405,6 +572,7 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
         }
 
         finishGeneration();
+        forgetActiveRun(sessionId);
         syncMessages(prev => prev.map(msg =>
           msg.id === aiMessage.id
             ? { ...msg, status: 'completed', content: streamedContent, ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
@@ -423,7 +591,10 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
         }]);
       },
       () => {
+        updateActiveDraft('aborted');
+        savePartialDraft('aborted');
         finishGeneration();
+        forgetActiveRun(sessionId);
         syncMessages(prev => prev.map(msg =>
           msg.id === aiMessage.id
             ? { ...msg, status: 'aborted', content: streamedContent, ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }
@@ -435,7 +606,10 @@ async function runStream(apiMessages, stateWithPlaceholder, aiMessage, sessionId
     );
   } catch (error) {
     console.error('Error:', error);
+    updateActiveDraft('failed');
+    savePartialDraft('failed');
     finishGeneration();
+    forgetActiveRun(sessionId);
     syncMessages(prev => prev.map(msg =>
       msg.id === aiMessage.id
         ? { ...msg, status: 'failed', content: '生成失败，请重试', ragStatus, reasoningContent: streamedReasoning, sources: retrievedSources }

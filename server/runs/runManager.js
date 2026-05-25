@@ -5,6 +5,7 @@ import { buildRagContext } from '../rag/store.js';
 const RUN_TTL_MS = 30 * 60 * 1000;
 const HEARTBEAT_MS = 15000;
 const runs = new Map();
+const activeRunsBySession = new Map();
 
 function writeSseHeaders(res) {
   if (res.headersSent) return;
@@ -32,6 +33,8 @@ function createRun(messages, provider, options = {}) {
     id: crypto.randomUUID(),
     messages,
     provider,
+    sessionId: options.sessionId || '',
+    assistantMessageId: options.assistantMessageId || '',
     ragCollectionId: options.ragCollectionId || '',
     sources: [],
     status: 'running',
@@ -44,6 +47,7 @@ function createRun(messages, provider, options = {}) {
   };
 
   runs.set(run.id, run);
+  if (run.sessionId) activeRunsBySession.set(run.sessionId, run.id);
   startRun(run);
   return run;
 }
@@ -63,6 +67,9 @@ function appendEvent(run, type, data = {}) {
   const terminalStatus = terminalStatusForEvent(type);
   if (terminalStatus) {
     run.status = terminalStatus;
+    if (run.sessionId && activeRunsBySession.get(run.sessionId) === run.id) {
+      activeRunsBySession.delete(run.sessionId);
+    }
   }
 
   for (const subscriber of run.subscribers) {
@@ -230,6 +237,9 @@ function cleanupRuns() {
   const now = Date.now();
   for (const [id, run] of runs) {
     if (run.status !== 'running' && now - run.updatedAt > RUN_TTL_MS) {
+      if (run.sessionId && activeRunsBySession.get(run.sessionId) === id) {
+        activeRunsBySession.delete(run.sessionId);
+      }
       runs.delete(id);
     }
   }
@@ -241,5 +251,6 @@ export const runManager = {
   createRun,
   subscribeRun,
   cancelRun,
-  getRun: (runId) => runs.get(runId)
+  getRun: (runId) => runs.get(runId),
+  getActiveRunForSession: (sessionId) => runs.get(activeRunsBySession.get(sessionId))
 };

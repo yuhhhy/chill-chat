@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { fetchCustomModels } from '../api/modelConfig.js';
+import * as promptsApi from '../api/prompts.js';
 
 const MODEL_PROVIDER_KEY = 'chill-chat:model-provider';
 const THEME_KEY = 'chill-chat:theme';
 const CONTEXT_TURN_KEY = 'chill-chat:context-turn-count';
-const SYSTEM_PROMPTS_KEY = 'chill-chat:system-prompts';
 const SELECTED_SYSTEM_PROMPT_KEY = 'chill-chat:selected-system-prompt';
 const DEFAULT_PROVIDER = 'deepseek';
 const DEFAULT_THEME = 'light';
@@ -16,52 +16,28 @@ function readStorage(key, fallback) {
   return window.localStorage.getItem(key) || fallback;
 }
 
-function readSystemPrompts() {
-  if (typeof window === 'undefined') return [];
-
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(SYSTEM_PROMPTS_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .filter(prompt => prompt && typeof prompt === 'object')
-      .map(prompt => ({
-        id: String(prompt.id || crypto.randomUUID()),
-        title: String(prompt.title || '').trim(),
-        content: String(prompt.content || '').trim(),
-        createdAt: Number(prompt.createdAt) || Date.now(),
-        updatedAt: Number(prompt.updatedAt) || Number(prompt.createdAt) || Date.now()
-      }))
-      .filter(prompt => prompt.title && prompt.content);
-  } catch {
-    return [];
-  }
-}
-
-function writeSystemPrompts(systemPrompts) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(SYSTEM_PROMPTS_KEY, JSON.stringify(systemPrompts));
-}
-
-function readSelectedSystemPromptId(systemPrompts) {
-  const selectedId = readStorage(SELECTED_SYSTEM_PROMPT_KEY, '');
-  return systemPrompts.some(prompt => prompt.id === selectedId) ? selectedId : '';
-}
-
 function readTurnCount() {
   if (typeof window === 'undefined') return DEFAULT_TURN_COUNT;
   const stored = Number(window.localStorage.getItem(CONTEXT_TURN_KEY));
   return VALID_TURN_COUNTS.has(stored) ? stored : DEFAULT_TURN_COUNT;
 }
 
-const initialSystemPrompts = readSystemPrompts();
+function fromDb(p) {
+  return {
+    id: p.id,
+    title: p.title,
+    content: p.content,
+    createdAt: p.created_at * 1000,
+    updatedAt: p.updated_at * 1000,
+  };
+}
 
-export const useSettingsStore = create((set) => ({
+export const useSettingsStore = create((set, get) => ({
   theme: readStorage(THEME_KEY, DEFAULT_THEME),
   modelProvider: readStorage(MODEL_PROVIDER_KEY, DEFAULT_PROVIDER),
   contextTurnCount: readTurnCount(),
-  systemPrompts: initialSystemPrompts,
-  selectedSystemPromptId: readSelectedSystemPromptId(initialSystemPrompts),
+  systemPrompts: [],
+  selectedSystemPromptId: readStorage(SELECTED_SYSTEM_PROMPT_KEY, ''),
   customModels: [],
   modelNames: {},
 
@@ -83,7 +59,7 @@ export const useSettingsStore = create((set) => ({
 
   setSelectedSystemPromptId: (promptId) => {
     set((state) => {
-      const selectedSystemPromptId = state.systemPrompts.some(prompt => prompt.id === promptId) ? promptId : '';
+      const selectedSystemPromptId = state.systemPrompts.some(p => p.id === promptId) ? promptId : '';
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(SELECTED_SYSTEM_PROMPT_KEY, selectedSystemPromptId);
       }
@@ -91,42 +67,34 @@ export const useSettingsStore = create((set) => ({
     });
   },
 
-  createSystemPrompt: ({ title, content }) => {
-    const now = Date.now();
-    const prompt = {
-      id: crypto.randomUUID(),
-      title: title.trim(),
-      content: content.trim(),
-      createdAt: now,
-      updatedAt: now
-    };
+  loadSystemPrompts: async () => {
+    const data = await promptsApi.fetchPrompts();
+    const systemPrompts = data.map(fromDb);
+    const stored = readStorage(SELECTED_SYSTEM_PROMPT_KEY, '');
+    const selectedSystemPromptId = systemPrompts.some(p => p.id === stored) ? stored : '';
+    set({ systemPrompts, selectedSystemPromptId });
+  },
 
-    set((state) => {
-      const systemPrompts = [...state.systemPrompts, prompt];
-      writeSystemPrompts(systemPrompts);
-      return { systemPrompts };
-    });
-
+  createSystemPrompt: async ({ title, content }) => {
+    const data = await promptsApi.createPrompt(title, content);
+    const prompt = fromDb(data);
+    set((state) => ({ systemPrompts: [...state.systemPrompts, prompt] }));
     return prompt;
   },
 
-  updateSystemPrompt: (promptId, { title, content }) => {
-    set((state) => {
-      const systemPrompts = state.systemPrompts.map(prompt => (
-        prompt.id === promptId
-          ? { ...prompt, title: title.trim(), content: content.trim(), updatedAt: Date.now() }
-          : prompt
-      ));
-      writeSystemPrompts(systemPrompts);
-      return { systemPrompts };
-    });
+  updateSystemPrompt: async (promptId, { title, content }) => {
+    const data = await promptsApi.updatePrompt(promptId, title, content);
+    const updated = fromDb(data);
+    set((state) => ({
+      systemPrompts: state.systemPrompts.map(p => p.id === promptId ? updated : p)
+    }));
   },
 
-  deleteSystemPrompt: (promptId) => {
+  deleteSystemPrompt: async (promptId) => {
+    await promptsApi.deletePrompt(promptId);
     set((state) => {
-      const systemPrompts = state.systemPrompts.filter(prompt => prompt.id !== promptId);
+      const systemPrompts = state.systemPrompts.filter(p => p.id !== promptId);
       const selectedSystemPromptId = state.selectedSystemPromptId === promptId ? '' : state.selectedSystemPromptId;
-      writeSystemPrompts(systemPrompts);
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(SELECTED_SYSTEM_PROMPT_KEY, selectedSystemPromptId);
       }

@@ -70,6 +70,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_rag_chunks_collection ON rag_chunks(collection_id);
   CREATE INDEX IF NOT EXISTS idx_rag_chunks_document ON rag_chunks(document_id);
   CREATE INDEX IF NOT EXISTS idx_message_sources_message ON message_sources(message_id);
+  CREATE TABLE IF NOT EXISTS system_prompts (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
 `);
 
 const messageSourceColumns = db.prepare('PRAGMA table_info(message_sources)').all().map(column => column.name);
