@@ -15,20 +15,46 @@
 }
 
 .ask-chat-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px;
-  border: 1px solid #d8ddff;
+  border: 1px solid #c9ced7;
   border-radius: 8px;
-  background: #f8f9ff;
-  box-shadow: 0 8px 20px rgba(42, 82, 180, 0.12);
+  background: rgba(248, 249, 251, 0.94);
+  box-shadow: 0 10px 24px rgba(42, 45, 52, 0.12);
+}
+
+.ask-chat-trigger input {
+  width: 150px;
+  height: 30px;
+  min-width: 0;
+  padding: 0 4px 0 2px;
+  border: none;
+  border-radius: 6px;
+  outline: none;
+  background: transparent;
+  color: #2f3339;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1;
+}
+
+.ask-chat-trigger input::placeholder {
+  color: #8c929c;
+}
+
+.ask-chat-trigger input:focus {
+  background: transparent;
 }
 
 .ask-chat-trigger button {
   height: 30px;
   padding: 0 12px;
-  border: none;
+  border: 1px solid rgba(168, 174, 184, 0.72);
   border-radius: 6px;
-  background: linear-gradient(135deg, #ff8fa3 0%, #f2a3bd 38%, #adb2ff 72%, #7fb4ff 100%);
-  color: #fff;
+  background: linear-gradient(180deg, #ffffff 0%, #eef1f5 48%, #d9dde4 100%);
+  color: #2f3339;
   cursor: pointer;
   font-family: "Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
   font-size: 13.5px;
@@ -38,7 +64,7 @@
 }
 
 .ask-chat-trigger button:hover {
-  background: linear-gradient(135deg, #ff9caf 0%, #f5b0c7 38%, #b8bcff 72%, #8fc0ff 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f5f7fa 46%, #e3e7ed 100%);
 }
 
 .ask-chat-panel {
@@ -70,13 +96,41 @@
   cursor: grabbing;
 }
 
-.ask-chat-header span {
+.ask-chat-header > span {
   min-width: 0;
   flex: 1;
   overflow: hidden;
   font-size: 13.5px;
   font-weight: 700;
   line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-chat-header-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ask-chat-header-text > span:first-child {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-chat-user-prompt {
+  overflow: hidden;
+  color: #7d8492;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

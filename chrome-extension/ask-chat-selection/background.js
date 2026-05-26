@@ -16,7 +16,7 @@ async function getOptions() {
   return { ...DEFAULT_OPTIONS, ...stored };
 }
 
-function buildPrompt({ selectedText, pageTitle, pageUrl, surroundingText }) {
+function buildPrompt({ selectedText, pageTitle, pageUrl, surroundingText, userPrompt = '' }) {
   return `你是一个上下文术语解释助手。请先根据网页上下文判断用户选中文本在这里指什么，但不要把上下文里已经明说或显而易见的信息再说一遍。
 
 网页标题：
@@ -31,11 +31,16 @@ ${surroundingText || '无'}
 选中文本：
 「${selectedText}」
 
+用户追加提问：
+${String(userPrompt || '').trim() || '无'}
+
+如果“用户追加提问”不是“无”，请优先按照用户追加提问回答，同时仍结合上下文和选中文本。
+
 请先判断「${selectedText}」更像一个词语/短语，还是一段话。
 
-如果是词语/短语：请生成 200 个中文字符以内的维基百科式解释。使用 Markdown，禁止标题，禁止复述问题，尽量提供上下文之外但与此处含义相关的解释。
+如果是词语/短语：请生成 200 个中文字符以内的维基百科式解释。禁止使用任何 Markdown 格式，禁止标题，禁止复述问题，尽量提供上下文之外但与此处含义相关的解释。
 
-如果是一段话：请解释这句话在当前上下文里是什么意思，500 个中文字符以内。使用 Markdown，禁止标题，禁止复述问题。`;
+如果是一段话：请解释这句话在当前上下文里是什么意思，500 个中文字符以内。禁止使用任何 Markdown 格式，禁止标题，禁止复述问题。`;
 }
 
 async function readOpenAiStream(response, onChunk) {

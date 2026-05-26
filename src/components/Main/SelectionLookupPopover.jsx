@@ -8,7 +8,7 @@ import {
 
 function clampPosition(rect, mode) {
   const margin = 12;
-  const width = mode === 'result' ? 340 : 98;
+  const width = mode === 'result' ? 340 : 260;
   const height = mode === 'result' ? 190 : 42;
   const preferredLeft = rect.right + 8;
   const preferredTop = rect.bottom + 8;
@@ -65,11 +65,13 @@ const SelectionLookupPopover = ({
   const [content, setContent] = useState('');
   const [activeProvider, setActiveProvider] = useState('');
   const [error, setError] = useState('');
+  const [userPrompt, setUserPrompt] = useState('');
   const [panelPosition, setPanelPosition] = useState(null);
   const lookupRef = useRef(null);
   const popoverRef = useRef(null);
   const bodyRef = useRef(null);
   const dragRef = useRef(null);
+  const startLookupRef = useRef(null);
 
   const position = useMemo(() => {
     if (mode === 'result' && panelPosition) return panelPosition;
@@ -82,6 +84,7 @@ const SelectionLookupPopover = ({
     setContent('');
     setActiveProvider('');
     setError('');
+    setUserPrompt('');
     setPanelPosition(null);
     lookupRef.current?.cancel();
     lookupRef.current = null;
@@ -92,11 +95,29 @@ const SelectionLookupPopover = ({
 
     const handlePointerDown = (event) => {
       if (popoverRef.current?.contains(event.target)) return;
+      window.getSelection?.()?.removeAllRanges();
       onClose();
     };
 
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      const target = event.target;
+      const isOtherInteractive = !popoverRef.current?.contains(target) && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.contentEditable === 'true'
+      );
+      if (isOtherInteractive) return;
+      event.preventDefault();
+      startLookupRef.current?.();
+    };
+
     document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [mode, onClose]);
 
   useEffect(() => {
@@ -106,6 +127,7 @@ const SelectionLookupPopover = ({
   }, []);
 
   const startLookup = () => {
+    window.getSelection?.()?.removeAllRanges();
     const providers = buildSelectionLookupProviders({
       currentProvider,
       customModels,
@@ -130,7 +152,8 @@ const SelectionLookupPopover = ({
       messages: buildSelectionLookupMessages({
         selectedText: target.text,
         assistantMessage: target.assistantContent,
-        previousUserMessage: target.previousUserContent
+        previousUserMessage: target.previousUserContent,
+        userPrompt
       }),
       providers,
       onAttempt: (provider) => {
@@ -156,6 +179,7 @@ const SelectionLookupPopover = ({
         if (lookupRef.current === lookup) lookupRef.current = null;
       });
   };
+  startLookupRef.current = startLookup;
 
   const close = () => {
     lookupRef.current?.cancel();
@@ -225,6 +249,13 @@ const SelectionLookupPopover = ({
         style={{ left: position.left, top: position.top }}
       >
         <button type="button" onClick={startLookup}>Ask Chat</button>
+        <input
+          type="text"
+          value={userPrompt}
+          onChange={(event) => setUserPrompt(event.target.value)}
+          placeholder="Ask more..."
+          aria-label="Ask Chat 自定义提示词"
+        />
       </div>
     );
   }
@@ -243,7 +274,10 @@ const SelectionLookupPopover = ({
         onPointerUp={endHeaderDrag}
         onPointerCancel={endHeaderDrag}
       >
-        <span className="selection-lookup-term" title={target.text}>「{target.text}」</span>
+        <div className="selection-lookup-header-text">
+          <span className="selection-lookup-term" title={target.text}>「{target.text}」</span>
+          {userPrompt && <span className="selection-lookup-user-prompt" title={userPrompt}>{userPrompt}</span>}
+        </div>
         <button type="button" onClick={close} aria-label="关闭选中搜索">×</button>
       </div>
       <div className="selection-lookup-meta">

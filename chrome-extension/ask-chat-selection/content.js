@@ -5,6 +5,7 @@ const MAX_PAGE_CONTEXT_CHARS = 2600;
 
 let root = null;
 let nextPopoverId = 1;
+let suppressNextSelection = false;
 const popovers = new Map();
 
 function ensureRoot() {
@@ -34,7 +35,7 @@ function getSelectionRect(range) {
 
 function clampPosition(rect, mode) {
   const margin = 12;
-  const width = mode === 'panel' ? 360 : 98;
+  const width = mode === 'panel' ? 360 : 260;
   const height = mode === 'panel' ? 220 : 42;
   const preferredLeft = rect.right + 8;
   const preferredTop = rect.bottom + 8;
@@ -165,9 +166,11 @@ function renderButton(target) {
   host.insertAdjacentHTML('beforeend', `
     <div class="ask-chat-popover ask-chat-trigger" data-ask-chat-id="${id}" style="left:${position.left}px;top:${position.top}px">
       <button type="button">Ask Chat</button>
+      <input type="text" placeholder="Ask more..." aria-label="Ask Chat custom prompt">
     </div>
   `);
-  host.querySelector(`[data-ask-chat-id="${id}"] button`)?.addEventListener('click', () => startLookup(id));
+  const trigger = host.querySelector(`[data-ask-chat-id="${id}"]`);
+  trigger.querySelector('button')?.addEventListener('click', () => startLookup(id));
 }
 
 function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) {
@@ -186,11 +189,15 @@ function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) 
       ? `<span class="ask-chat-error">${escapeHtml(error)}</span>`
       : '<span class="ask-chat-muted">等待模型返回解释</span>';
 
+  const headerInner = state.userPrompt
+    ? `<div class="ask-chat-header-text"><span title="${escapeHtml(state.target.text)}">「${escapeHtml(state.target.text)}」</span><span class="ask-chat-user-prompt" title="${escapeHtml(state.userPrompt)}">${escapeHtml(state.userPrompt)}</span></div>`
+    : `<span title="${escapeHtml(state.target.text)}">「${escapeHtml(state.target.text)}」</span>`;
+
   removePopoverElement(id);
   host.insertAdjacentHTML('beforeend', `
     <section class="ask-chat-popover ask-chat-panel" data-ask-chat-id="${id}" style="left:${position.left}px;top:${position.top}px">
       <div class="ask-chat-header">
-        <span title="${escapeHtml(state.target.text)}">「${escapeHtml(state.target.text)}」</span>
+        ${headerInner}
         <button type="button" aria-label="Close">×</button>
       </div>
       <div class="ask-chat-meta">${status === 'loading' ? '正在询问模型' : status === 'error' ? '解释失败' : 'Ask Chat'}</div>
@@ -265,20 +272,31 @@ async function startLookup(id) {
   if (!state) return;
 
   const requestId = crypto.randomUUID();
+  const trigger = ensureRoot().querySelector(`[data-ask-chat-id="${id}"]`);
   state.requestId = requestId;
   state.content = '';
+  state.userPrompt = trigger?.querySelector('input')?.value?.trim() || state.userPrompt || '';
   renderPanel(id, { status: 'loading' });
 
-  const response = await chrome.runtime.sendMessage({
-    type: 'ASK_CHAT_EXPLAIN',
-    payload: {
-      requestId,
-      selectedText: state.target.text,
-      surroundingText: state.target.surroundingText,
-      pageTitle: state.target.pageTitle || document.title,
-      pageUrl: state.target.pageUrl || location.href
+  let response;
+  try {
+    response = await chrome.runtime.sendMessage({
+      type: 'ASK_CHAT_EXPLAIN',
+      payload: {
+        requestId,
+        selectedText: state.target.text,
+        surroundingText: state.target.surroundingText,
+        pageTitle: state.target.pageTitle || document.title,
+        pageUrl: state.target.pageUrl || location.href,
+        userPrompt: state.userPrompt
+      }
+    });
+  } catch {
+    if (popovers.has(id) && popovers.get(id).requestId === requestId) {
+      renderPanel(id, { status: 'error', error: '扩展已重载，请刷新页面后重试' });
     }
-  });
+    return;
+  }
 
   if (!popovers.has(id) || popovers.get(id).requestId !== requestId) return;
   if (!response?.ok) {
@@ -291,6 +309,11 @@ async function startLookup(id) {
 
 function handlePageSelection() {
   window.setTimeout(() => {
+    if (suppressNextSelection) {
+      suppressNextSelection = false;
+      return;
+    }
+
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
     if (isInsideAskChat(selection.anchorNode) || isInsideAskChat(selection.focusNode)) return;
@@ -351,9 +374,37 @@ document.addEventListener('mouseup', (event) => {
 });
 
 document.addEventListener('keyup', handlePageSelection);
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing) return;
+
+  const buttonPopovers = [...popovers.entries()].filter(([, state]) => state.mode === 'button');
+  if (!buttonPopovers.length) return;
+
+  const target = event.target;
+  const isOtherInteractive = !isInsideAskChat(target) && (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.contentEditable === 'true'
+  );
+  if (isOtherInteractive) return;
+
+  event.preventDefault();
+  suppressNextSelection = true;
+  for (const [id] of buttonPopovers) {
+    startLookup(id);
+  }
+});
 document.addEventListener('pointerdown', (event) => {
   if (isInsideAskChat(event.target)) return;
+  let closedButton = false;
   for (const [id, state] of popovers) {
-    if (state.mode === 'button') closePopover(id);
+    if (state.mode === 'button') {
+      closePopover(id);
+      closedButton = true;
+    }
+  }
+  if (closedButton) {
+    suppressNextSelection = true;
   }
 });
