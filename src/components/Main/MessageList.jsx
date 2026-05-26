@@ -436,11 +436,15 @@ const MessageList = () => {
   const currentProvider = useSettingsStore(s => s.modelProvider);
   const customModels = useSettingsStore(s => s.customModels);
   const modelNames = useSettingsStore(s => s.modelNames);
-  const [lookupTarget, setLookupTarget] = useState(null);
+  const [lookupTargets, setLookupTargets] = useState([]);
   const lastAiIndex = messages.findLastIndex(m => m.role === "assistant");
 
   const handleSelectionLookup = useCallback((target) => {
-    setLookupTarget(target);
+    setLookupTargets(current => [...current, target]);
+  }, []);
+
+  const closeSelectionLookup = useCallback((targetId) => {
+    setLookupTargets(current => current.filter(target => target.id !== targetId));
   }, []);
 
   return (
@@ -464,15 +468,17 @@ const MessageList = () => {
           overscan={240}
         />
       </div>
-      {lookupTarget && (
+      {lookupTargets.map((lookupTarget) => (
         <SelectionLookupPopover
+          key={lookupTarget.id}
           currentProvider={currentProvider}
           customModels={customModels}
           modelNames={modelNames}
-          onClose={() => setLookupTarget(null)}
+          onClose={() => closeSelectionLookup(lookupTarget.id)}
+          onRecursiveLookup={handleSelectionLookup}
           target={lookupTarget}
         />
-      )}
+      ))}
     </div>
   );
 };

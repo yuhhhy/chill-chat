@@ -292,9 +292,30 @@ test('选中助手回复后点击解释并在模型失败时自动 fallback', as
     element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
 
-  await page.locator('.selection-lookup-trigger button', { hasText: '解释' }).click();
+  await page.locator('.selection-lookup-trigger button', { hasText: 'Ask Chat' }).click();
   await expect(page.locator('.selection-lookup-body')).toContainText('根对象是页面文档结构的入口对象');
   expect(posts.map(post => post.provider)).toEqual(['deepseek', 'chatgpt']);
   expect(posts[0].messages[0].content).toContain('用户上一问：\n解释 DOM');
   expect(posts[0].messages[0].content).toContain('选中文本：\n「根对象」');
+
+  await page.locator('.selection-lookup-body').evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node && !node.textContent.includes('入口对象')) node = walker.nextNode();
+    const start = node.textContent.indexOf('入口对象');
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + '入口对象'.length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+
+  await expect(page.locator('.selection-lookup-panel')).toHaveCount(1);
+  await expect(page.locator('.selection-lookup-trigger button', { hasText: 'Ask Chat' })).toHaveCount(1);
+
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  await page.mouse.click(8, 8);
+  await expect(page.locator('.selection-lookup-panel')).toHaveCount(1);
 });

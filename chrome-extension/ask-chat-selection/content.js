@@ -3,11 +3,9 @@ const MAX_CONTEXT_CHARS = 5000;
 const MAX_LOCAL_CONTEXT_CHARS = 1800;
 const MAX_PAGE_CONTEXT_CHARS = 2600;
 
-let currentTarget = null;
-let currentRequestId = '';
 let root = null;
-let panelPosition = null;
-let dragState = null;
+let nextPopoverId = 1;
+const popovers = new Map();
 
 function ensureRoot() {
   if (root) return root;
@@ -104,7 +102,7 @@ function windowAroundSelection(text, selectedText, maxChars) {
   if (text.length <= maxChars) return text;
 
   const index = text.indexOf(selectedText);
-  if (index === -1) return text.slice(0, MAX_CONTEXT_CHARS);
+  if (index === -1) return text.slice(0, maxChars);
 
   const half = Math.floor((maxChars - selectedText.length) / 2);
   const start = Math.max(0, index - half);
@@ -126,25 +124,6 @@ function getSurroundingText(selection) {
   return contextParts.join('\n\n').slice(0, MAX_CONTEXT_CHARS);
 }
 
-function closePopover() {
-  currentTarget = null;
-  currentRequestId = '';
-  panelPosition = null;
-  dragState = null;
-  ensureRoot().innerHTML = '';
-}
-
-function renderButton(target) {
-  const host = ensureRoot();
-  const position = clampPosition(target.rect, 'button');
-  host.innerHTML = `
-    <div class="ask-chat-popover ask-chat-trigger" style="left:${position.left}px;top:${position.top}px">
-      <button type="button">Ask Chat</button>
-    </div>
-  `;
-  host.querySelector('button')?.addEventListener('click', () => startLookup(target));
-}
-
 function escapeHtml(text) {
   return String(text || '')
     .replace(/&/g, '&amp;')
@@ -154,28 +133,76 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
-function renderPanel(target, { status = 'loading', content = '', error = '' } = {}) {
+function createPopover(target) {
+  const id = `ask-chat-${nextPopoverId}`;
+  nextPopoverId += 1;
+  popovers.set(id, {
+    id,
+    target,
+    requestId: '',
+    content: '',
+    panelPosition: null,
+    dragState: null
+  });
+  return id;
+}
+
+function removePopoverElement(id) {
+  ensureRoot().querySelector(`[data-ask-chat-id="${id}"]`)?.remove();
+}
+
+function closePopover(id) {
+  removePopoverElement(id);
+  popovers.delete(id);
+}
+
+function renderButton(target) {
+  const id = createPopover(target);
   const host = ensureRoot();
-  const position = panelPosition || clampPosition(target.rect, 'panel');
-  panelPosition = position;
-  const body = content
-    ? escapeHtml(content).replace(/\n/g, '<br>')
+  const position = clampPosition(target.rect, 'button');
+  const state = popovers.get(id);
+  state.mode = 'button';
+  host.insertAdjacentHTML('beforeend', `
+    <div class="ask-chat-popover ask-chat-trigger" data-ask-chat-id="${id}" style="left:${position.left}px;top:${position.top}px">
+      <button type="button">Ask Chat</button>
+    </div>
+  `);
+  host.querySelector(`[data-ask-chat-id="${id}"] button`)?.addEventListener('click', () => startLookup(id));
+}
+
+function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) {
+  const state = popovers.get(id);
+  if (!state) return;
+
+  state.mode = 'panel';
+  const host = ensureRoot();
+  const position = state.panelPosition || clampPosition(state.target.rect, 'panel');
+  state.panelPosition = position;
+  if (content) state.content = content;
+
+  const body = state.content
+    ? escapeHtml(state.content).replace(/\n/g, '<br>')
     : status === 'error'
       ? `<span class="ask-chat-error">${escapeHtml(error)}</span>`
       : '<span class="ask-chat-muted">等待模型返回解释</span>';
 
-  host.innerHTML = `
-    <section class="ask-chat-popover ask-chat-panel" style="left:${position.left}px;top:${position.top}px">
+  removePopoverElement(id);
+  host.insertAdjacentHTML('beforeend', `
+    <section class="ask-chat-popover ask-chat-panel" data-ask-chat-id="${id}" style="left:${position.left}px;top:${position.top}px">
       <div class="ask-chat-header">
-        <span title="${escapeHtml(target.text)}">「${escapeHtml(target.text)}」</span>
+        <span title="${escapeHtml(state.target.text)}">「${escapeHtml(state.target.text)}」</span>
         <button type="button" aria-label="Close">×</button>
       </div>
       <div class="ask-chat-meta">${status === 'loading' ? '正在询问模型' : status === 'error' ? '解释失败' : 'Ask Chat'}</div>
-      <div class="ask-chat-body">${body}</div>
+      <div class="ask-chat-body" data-content="${escapeHtml(state.content)}">${body}</div>
     </section>
-  `;
-  host.querySelector('.ask-chat-header button')?.addEventListener('click', closePopover);
-  attachPanelDrag();
+  `);
+
+  const panel = host.querySelector(`[data-ask-chat-id="${id}"]`);
+  panel.querySelector('.ask-chat-header button')?.addEventListener('click', () => closePopover(id));
+  panel.querySelector('.ask-chat-body')?.addEventListener('mouseup', () => handlePanelSelection(id));
+  panel.querySelector('.ask-chat-body')?.addEventListener('keyup', () => handlePanelSelection(id));
+  attachPanelDrag(id);
 }
 
 function clampPanelPosition(left, top, panel) {
@@ -187,15 +214,16 @@ function clampPanelPosition(left, top, panel) {
   };
 }
 
-function attachPanelDrag() {
-  const panel = ensureRoot().querySelector('.ask-chat-panel');
-  const header = ensureRoot().querySelector('.ask-chat-header');
-  if (!panel || !header) return;
+function attachPanelDrag(id) {
+  const state = popovers.get(id);
+  const panel = ensureRoot().querySelector(`[data-ask-chat-id="${id}"]`);
+  const header = panel?.querySelector('.ask-chat-header');
+  if (!state || !panel || !header) return;
 
   header.addEventListener('pointerdown', (event) => {
     if (event.target.closest('button')) return;
     const rect = panel.getBoundingClientRect();
-    dragState = {
+    state.dragState = {
       pointerId: event.pointerId,
       offsetX: event.clientX - rect.left,
       offsetY: event.clientY - rect.top
@@ -206,20 +234,20 @@ function attachPanelDrag() {
   });
 
   header.addEventListener('pointermove', (event) => {
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    if (!state.dragState || state.dragState.pointerId !== event.pointerId) return;
     const next = clampPanelPosition(
-      event.clientX - dragState.offsetX,
-      event.clientY - dragState.offsetY,
+      event.clientX - state.dragState.offsetX,
+      event.clientY - state.dragState.offsetY,
       panel
     );
-    panelPosition = next;
+    state.panelPosition = next;
     panel.style.left = `${next.left}px`;
     panel.style.top = `${next.top}px`;
   });
 
   const endDrag = (event) => {
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    dragState = null;
+    if (!state.dragState || state.dragState.pointerId !== event.pointerId) return;
+    state.dragState = null;
     panel.classList.remove('dragging');
     try {
       header.releasePointerCapture(event.pointerId);
@@ -232,68 +260,100 @@ function attachPanelDrag() {
   header.addEventListener('pointercancel', endDrag);
 }
 
-async function startLookup(target) {
+async function startLookup(id) {
+  const state = popovers.get(id);
+  if (!state) return;
+
   const requestId = crypto.randomUUID();
-  currentRequestId = requestId;
-  renderPanel(target, { status: 'loading' });
+  state.requestId = requestId;
+  state.content = '';
+  renderPanel(id, { status: 'loading' });
 
   const response = await chrome.runtime.sendMessage({
     type: 'ASK_CHAT_EXPLAIN',
     payload: {
       requestId,
-      selectedText: target.text,
-      surroundingText: target.surroundingText,
-      pageTitle: document.title,
-      pageUrl: location.href
+      selectedText: state.target.text,
+      surroundingText: state.target.surroundingText,
+      pageTitle: state.target.pageTitle || document.title,
+      pageUrl: state.target.pageUrl || location.href
     }
   });
 
-  if (currentRequestId !== requestId) return;
+  if (!popovers.has(id) || popovers.get(id).requestId !== requestId) return;
   if (!response?.ok) {
-    renderPanel(target, { status: 'error', error: response?.error || '解释失败' });
+    renderPanel(id, { status: 'error', error: response?.error || '解释失败' });
     return;
   }
-  renderPanel(target, { status: 'done', content: response.data?.content || '' });
+  state.content = response.data?.content || state.content;
+  renderPanel(id, { status: 'done', content: state.content });
 }
 
-function handleSelection() {
+function handlePageSelection() {
   window.setTimeout(() => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
     if (isInsideAskChat(selection.anchorNode) || isInsideAskChat(selection.focusNode)) return;
 
-    const text = selection.toString().trim().replace(/\s+/g, ' ');
+    const text = normalizeText(selection.toString());
     if (!text) return;
 
     const range = selection.getRangeAt(0);
-    currentTarget = {
+    renderButton({
       rect: getSelectionRect(range),
+      pageTitle: document.title,
+      pageUrl: location.href,
       surroundingText: getSurroundingText(selection),
       text
-    };
-    renderButton(currentTarget);
+    });
+  }, 0);
+}
+
+function handlePanelSelection(id) {
+  window.setTimeout(() => {
+    const state = popovers.get(id);
+    const selection = window.getSelection();
+    const body = ensureRoot().querySelector(`[data-ask-chat-id="${id}"] .ask-chat-body`);
+    if (!state || !body || !selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    if (!body.contains(selection.anchorNode) || !body.contains(selection.focusNode)) return;
+
+    const text = normalizeText(selection.toString());
+    if (!text) return;
+
+    const range = selection.getRangeAt(0);
+    const answerText = normalizeText(body.dataset.content || body.innerText || body.textContent);
+    renderButton({
+      rect: getSelectionRect(range),
+      pageTitle: 'Ask Chat 上一层回答',
+      pageUrl: location.href,
+      surroundingText: `上一层 Ask Chat 回答：${answerText || '无'}`,
+      text
+    });
   }, 0);
 }
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type !== 'ASK_CHAT_DELTA') return;
-  if (message.requestId !== currentRequestId || !currentTarget) return;
 
-  const body = ensureRoot().querySelector('.ask-chat-body');
+  const state = Array.from(popovers.values()).find(item => item.requestId === message.requestId);
+  if (!state) return;
+
+  state.content += message.chunk || '';
+  const body = ensureRoot().querySelector(`[data-ask-chat-id="${state.id}"] .ask-chat-body`);
   if (!body) return;
-  const current = body.dataset.content || '';
-  const next = current + (message.chunk || '');
-  body.dataset.content = next;
-  body.innerHTML = escapeHtml(next).replace(/\n/g, '<br>');
+  body.dataset.content = state.content;
+  body.innerHTML = escapeHtml(state.content).replace(/\n/g, '<br>');
 });
 
 document.addEventListener('mouseup', (event) => {
   if (isInsideAskChat(event.target)) return;
-  handleSelection();
+  handlePageSelection();
 });
 
-document.addEventListener('keyup', handleSelection);
+document.addEventListener('keyup', handlePageSelection);
 document.addEventListener('pointerdown', (event) => {
   if (isInsideAskChat(event.target)) return;
-  if (!window.getSelection()?.toString().trim()) closePopover();
+  for (const [id, state] of popovers) {
+    if (state.mode === 'button') closePopover(id);
+  }
 });

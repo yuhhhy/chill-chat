@@ -989,6 +989,13 @@ html[data-theme="dark"] .search-box {
     min-height: 42px;
     padding: 8px 10px 7px 12px;
     border-bottom: 1px solid var(--border-subtle);
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+}
+
+.selection-lookup-panel.dragging .selection-lookup-header {
+    cursor: grabbing;
 }
 
 .selection-lookup-term {
