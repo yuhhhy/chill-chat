@@ -5,6 +5,8 @@ const DEFAULT_OPTIONS = {
   temperature: 0.2
 };
 
+const activeRequests = new Map();
+
 function normalizeBaseUrl(url) {
   const trimmed = String(url || '').trim().replace(/\/+$/, '');
   if (!trimmed) return DEFAULT_OPTIONS.apiBaseUrl;
@@ -16,7 +18,33 @@ async function getOptions() {
   return { ...DEFAULT_OPTIONS, ...stored };
 }
 
-function buildPrompt({ selectedText, pageTitle, pageUrl, surroundingText, userPrompt = '' }) {
+function buildPrompt({ selectedText, pageTitle, pageUrl, surroundingText, userPrompt = '', intent = 'explain' }) {
+  if (intent === 'translate') {
+    return `你是一个上下文翻译助手。请结合网页上下文翻译用户选中的文本，只输出译文，不要标题，不要解释翻译过程。
+
+网页标题：
+${pageTitle || '无'}
+
+网页地址：
+${pageUrl || '无'}
+
+网页上下文：
+${surroundingText || '无'}
+
+选中文本：
+「${selectedText}」
+
+如果选中文本主要是中文，请翻译成自然、准确的英文；如果主要是非中文，请翻译成自然、准确的中文。保留原意、语气、术语和必要的 Markdown 格式。`;
+  }
+
+  const trimmedUserPrompt = String(userPrompt || '').trim();
+  const defaultInstruction = `请先判断「${selectedText}」更像一个词语/短语，还是一段话。
+
+如果是词语/短语：请生成 200 个中文字符以内的维基百科式解释。使用 md 格式，禁止标题，禁止复述问题，尽量提供上下文之外但与此处含义相关的解释。
+
+如果是一段话：请解释这句话在当前上下文里是什么意思，500 个中文字符以内。使用 md 格式，禁止标题，禁止复述问题。`;
+  const userInstruction = `请根据用户追加提问回答，同时结合网页上下文和选中文本。使用 md 格式，禁止标题，禁止复述问题。`;
+
   return `你是一个上下文术语解释助手。请先根据网页上下文判断用户选中文本在这里指什么，但不要把上下文里已经明说或显而易见的信息再说一遍。
 
 网页标题：
@@ -32,15 +60,9 @@ ${surroundingText || '无'}
 「${selectedText}」
 
 用户追加提问：
-${String(userPrompt || '').trim() || '无'}
+${trimmedUserPrompt || '无'}
 
-如果“用户追加提问”不是“无”，请优先按照用户追加提问回答，同时仍结合上下文和选中文本。
-
-请先判断「${selectedText}」更像一个词语/短语，还是一段话。
-
-如果是词语/短语：请生成 200 个中文字符以内的维基百科式解释。使用 md 格式，禁止标题，禁止复述问题，尽量提供上下文之外但与此处含义相关的解释。
-
-如果是一段话：请解释这句话在当前上下文里是什么意思，500 个中文字符以内。使用 md 格式，禁止标题，禁止复述问题。`;
+${trimmedUserPrompt ? userInstruction : defaultInstruction}`;
 }
 
 async function readOpenAiStream(response, onChunk) {
@@ -76,55 +98,77 @@ async function explainSelection(payload, sender) {
     throw new Error('请先在扩展设置中填写 API Key');
   }
 
-  const res = await fetch(normalizeBaseUrl(options.apiBaseUrl), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${options.apiKey}`
-    },
-    body: JSON.stringify({
-      model: options.model,
-      temperature: Number(options.temperature) || DEFAULT_OPTIONS.temperature,
-      stream: true,
-      messages: [
-        {
-          role: 'user',
-          content: buildPrompt(payload)
-        }
-      ]
-    })
-  });
+  const controller = new AbortController();
+  activeRequests.set(payload.requestId, controller);
 
-  if (!res.ok) {
-    let message = `模型请求失败：HTTP ${res.status}`;
-    try {
-      const data = await res.json();
-      message = data?.error?.message || data?.error || message;
-    } catch {
-      // Keep status fallback.
+  try {
+    const res = await fetch(normalizeBaseUrl(options.apiBaseUrl), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${options.apiKey}`
+      },
+      body: JSON.stringify({
+        model: options.model,
+        temperature: Number(options.temperature) || DEFAULT_OPTIONS.temperature,
+        stream: true,
+        messages: [
+          {
+            role: 'user',
+            content: buildPrompt(payload)
+          }
+        ]
+      })
+    });
+
+    if (!res.ok) {
+      let message = `模型请求失败：HTTP ${res.status}`;
+      try {
+        const data = await res.json();
+        message = data?.error?.message || data?.error || message;
+      } catch {
+        // Keep status fallback.
+      }
+      throw new Error(message);
     }
-    throw new Error(message);
+
+    let content = '';
+    await readOpenAiStream(res, (chunk) => {
+      content += chunk;
+      chrome.tabs.sendMessage(sender.tab.id, {
+        type: 'ASK_CHAT_DELTA',
+        requestId: payload.requestId,
+        chunk
+      }).catch(() => {});
+    });
+
+    return { content };
+  } finally {
+    activeRequests.delete(payload.requestId);
   }
-
-  let content = '';
-  await readOpenAiStream(res, (chunk) => {
-    content += chunk;
-    chrome.tabs.sendMessage(sender.tab.id, {
-      type: 'ASK_CHAT_DELTA',
-      requestId: payload.requestId,
-      chunk
-    }).catch(() => {});
-  });
-
-  return { content };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'ASK_CHAT_CANCEL') {
+    const controller = activeRequests.get(message.requestId);
+    controller?.abort();
+    activeRequests.delete(message.requestId);
+    sendResponse({ ok: true });
+    return false;
+  }
+
   if (message?.type !== 'ASK_CHAT_EXPLAIN') return false;
 
   explainSelection(message.payload, sender)
     .then((data) => sendResponse({ ok: true, data }))
-    .catch((error) => sendResponse({ ok: false, error: error.message || '解释失败' }));
+    .catch((error) => {
+      if (error.name === 'AbortError') {
+        sendResponse({ ok: false, cancelled: true });
+        return;
+      }
+      sendResponse({ ok: false, error: error.message || '解释失败' });
+    });
 
   return true;
 });

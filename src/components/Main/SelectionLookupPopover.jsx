@@ -74,6 +74,7 @@ const SelectionLookupPopover = ({
   const [error, setError] = useState('');
   const [isPinned, setIsPinned] = useState(false);
   const [userPrompt, setUserPrompt] = useState('');
+  const [intent, setIntent] = useState(target.intent || 'explain');
   const [panelPosition, setPanelPosition] = useState(null);
   const lookupRef = useRef(null);
   const popoverRef = useRef(null);
@@ -94,6 +95,7 @@ const SelectionLookupPopover = ({
     setError('');
     setIsPinned(false);
     setUserPrompt('');
+    setIntent(target.intent || 'explain');
     setPanelPosition(null);
     lookupRef.current?.cancel();
     lookupRef.current = null;
@@ -109,16 +111,25 @@ const SelectionLookupPopover = ({
     };
 
     const handleKeyDown = (event) => {
-      if (event.key !== 'Enter' || event.isComposing) return;
-      const target = event.target;
-      const isOtherInteractive = !popoverRef.current?.contains(target) && (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.contentEditable === 'true'
+      if (event.isComposing) return;
+      const eventTarget = event.target;
+      const isInteractive = (
+        eventTarget.tagName === 'INPUT' ||
+        eventTarget.tagName === 'TEXTAREA' ||
+        eventTarget.contentEditable === 'true'
       );
-      if (isOtherInteractive) return;
-      event.preventDefault();
-      startLookupRef.current?.();
+      if (event.key === 'Enter') {
+        const isOtherInteractive = !popoverRef.current?.contains(eventTarget) && isInteractive;
+        if (isOtherInteractive) return;
+        event.preventDefault();
+        startLookupRef.current?.('explain');
+        return;
+      }
+      if (event.key.toLowerCase() === 't' && mode === 'button') {
+        if (isInteractive) return;
+        event.preventDefault();
+        startLookupRef.current?.('translate');
+      }
     };
 
     document.addEventListener('pointerdown', handlePointerDown, true);
@@ -135,8 +146,9 @@ const SelectionLookupPopover = ({
     };
   }, []);
 
-  const startLookup = () => {
+  const startLookup = (nextIntent = 'explain') => {
     window.getSelection?.()?.removeAllRanges();
+    setIntent(nextIntent);
     const providers = buildSelectionLookupProviders({
       currentProvider,
       customModels,
@@ -163,7 +175,8 @@ const SelectionLookupPopover = ({
         selectedText: target.text,
         assistantMessage: target.assistantContent,
         previousUserMessage: target.previousUserContent,
-        userPrompt
+        userPrompt: nextIntent === 'translate' ? '' : userPrompt,
+        intent: nextIntent
       }),
       providers,
       onAttempt: (provider) => {
@@ -258,7 +271,7 @@ const SelectionLookupPopover = ({
         className="selection-lookup-popover selection-lookup-trigger"
         style={{ left: position.left, top: position.top }}
       >
-        <button type="button" onClick={startLookup}>Ask Chat</button>
+        <button type="button" onClick={() => startLookup('explain')}>Ask Chat</button>
         <input
           type="text"
           value={userPrompt}
@@ -304,12 +317,12 @@ const SelectionLookupPopover = ({
         {status === 'loading' ? (
           <>
             <LoadingDots />
-            <span>正在尝试 {modelNames[activeProvider] || activeProvider || '模型'}</span>
+            <span>{intent === 'translate' ? '正在翻译' : '正在尝试'} {modelNames[activeProvider] || activeProvider || '模型'}</span>
           </>
         ) : status === 'done' ? (
-          <span>{modelNames[activeProvider] || activeProvider || '模型'} 已解释</span>
+          <span>{modelNames[activeProvider] || activeProvider || '模型'} {intent === 'translate' ? '已翻译' : '已解释'}</span>
         ) : (
-          <span>解释失败</span>
+          <span>{intent === 'translate' ? '翻译失败' : '解释失败'}</span>
         )}
       </div>
       <div
@@ -323,7 +336,7 @@ const SelectionLookupPopover = ({
         ) : status === 'error' ? (
           <p className="selection-lookup-error">{error}</p>
         ) : (
-          <p className="selection-lookup-placeholder">等待模型返回解释</p>
+          <p className="selection-lookup-placeholder">等待模型返回{intent === 'translate' ? '翻译' : '解释'}</p>
         )}
       </div>
       {status === 'error' && content && <p className="selection-lookup-error">{error}</p>}

@@ -3,7 +3,32 @@ import StreamParser from './streamParser.js';
 
 export const BUILT_IN_LOOKUP_PROVIDERS = ['chatgpt', 'gemini', 'deepseek', 'claude'];
 
-export function buildSelectionLookupMessages({ selectedText, assistantMessage, previousUserMessage, userPrompt = '' }) {
+export function buildSelectionLookupMessages({ selectedText, assistantMessage, previousUserMessage, userPrompt = '', intent = 'explain' }) {
+  if (intent === 'translate') {
+    const prompt = `你是一个上下文翻译助手。请结合上下文翻译用户选中的文本，只输出译文，不要标题，不要解释翻译过程。
+
+用户上一问：
+${previousUserMessage || '无'}
+
+助手回复：
+${assistantMessage || '无'}
+
+选中文本：
+「${selectedText}」
+
+如果选中文本主要是中文，请翻译成自然、准确的英文；如果主要是非中文，请翻译成自然、准确的中文。保留原意、语气、术语和必要的 Markdown 格式。`;
+
+    return [{ role: 'user', content: prompt }];
+  }
+
+  const trimmedUserPrompt = String(userPrompt || '').trim();
+  const defaultInstruction = `请先判断「${selectedText}」更像一个词语/短语，还是一段话。
+
+如果是词语/短语：请生成 100 个中文字符以内的维基百科式解释。使用 md 格式，禁止标题，禁止复述问题，尽量提供上下文之外但与此处含义相关的解释。
+
+如果是一段话：请解释这句话在当前上下文里是什么意思，300 个中文字符以内。使用 md 格式，禁止标题，禁止复述问题。`;
+  const userInstruction = `请根据用户追加提问回答，同时结合上下文和选中文本。使用 md 格式，禁止标题，禁止复述问题。`;
+
   const prompt = `你是一个上下文术语解释助手。请先根据上下文判断用户选中文本在这里指什么，但不要把上下文里已经明说或显而易见的信息再说一遍。
 
 用户上一问：
@@ -16,15 +41,9 @@ ${assistantMessage || '无'}
 「${selectedText}」
 
 用户追加提问：
-${userPrompt.trim() || '无'}
+${trimmedUserPrompt || '无'}
 
-如果“用户追加提问”不是“无”，请优先按照用户追加提问回答，同时仍结合上下文和选中文本。
-
-请先判断「${selectedText}」更像一个词语/短语，还是一段话。
-
-如果是词语/短语：请生成 100 个中文字符以内的维基百科式解释。使用 md 格式，禁止标题，禁止复述问题，尽量提供上下文之外但与此处含义相关的解释。
-
-如果是一段话：请解释这句话在当前上下文里是什么意思，300 个中文字符以内。使用 md 格式，禁止标题，禁止复述问题。`;
+${trimmedUserPrompt ? userInstruction : defaultInstruction}`;
 
   return [{ role: 'user', content: prompt }];
 }
