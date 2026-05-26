@@ -440,11 +440,20 @@ const MessageList = () => {
   const lastAiIndex = messages.findLastIndex(m => m.role === "assistant");
 
   const handleSelectionLookup = useCallback((target) => {
-    setLookupTargets(current => [...current, target]);
+    setLookupTargets(current => [
+      ...current.filter(item => item.mode !== 'button'),
+      { ...target, mode: 'button' }
+    ]);
   }, []);
 
   const closeSelectionLookup = useCallback((targetId) => {
     setLookupTargets(current => current.filter(target => target.id !== targetId));
+  }, []);
+
+  const markSelectionLookupActive = useCallback((targetId) => {
+    setLookupTargets(current => current.map(target =>
+      target.id === targetId ? { ...target, mode: 'result' } : target
+    ));
   }, []);
 
   return (
@@ -475,6 +484,7 @@ const MessageList = () => {
           customModels={customModels}
           modelNames={modelNames}
           onClose={() => closeSelectionLookup(lookupTarget.id)}
+          onActivate={() => markSelectionLookupActive(lookupTarget.id)}
           onRecursiveLookup={handleSelectionLookup}
           target={lookupTarget}
         />

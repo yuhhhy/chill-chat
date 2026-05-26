@@ -142,6 +142,7 @@ function createPopover(target) {
     target,
     requestId: '',
     content: '',
+    pinned: false,
     panelPosition: null,
     dragState: null
   });
@@ -158,6 +159,7 @@ function closePopover(id) {
 }
 
 function renderButton(target) {
+  closeButtonPopovers();
   const id = createPopover(target);
   const host = ensureRoot();
   const position = clampPosition(target.rect, 'button');
@@ -171,6 +173,22 @@ function renderButton(target) {
   `);
   const trigger = host.querySelector(`[data-ask-chat-id="${id}"]`);
   trigger.querySelector('button')?.addEventListener('click', () => startLookup(id));
+  trigger.querySelector('input')?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    startLookup(id);
+  });
+}
+
+function closeButtonPopovers(exceptId = '') {
+  let closed = false;
+  for (const [id, state] of popovers) {
+    if (state.mode === 'button' && id !== exceptId) {
+      closePopover(id);
+      closed = true;
+    }
+  }
+  return closed;
 }
 
 function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) {
@@ -195,8 +213,13 @@ function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) 
 
   removePopoverElement(id);
   host.insertAdjacentHTML('beforeend', `
-    <section class="ask-chat-popover ask-chat-panel" data-ask-chat-id="${id}" style="left:${position.left}px;top:${position.top}px">
+    <section class="ask-chat-popover ask-chat-panel${state.pinned ? ' pinned' : ''}" data-ask-chat-id="${id}" style="left:${position.left}px;top:${position.top}px">
       <div class="ask-chat-header">
+        <button type="button" class="ask-chat-pin" aria-label="${state.pinned ? 'Unpin Ask Chat popup' : 'Pin Ask Chat popup'}" aria-pressed="${state.pinned}" title="${state.pinned ? 'Unpin' : 'Pin'}">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14.5 3.5 20.5 9.5 18.4 11.6 16.8 10 13 13.8V18L11.8 19.2 8.2 15.6 4 19.8 3.2 19 7.4 14.8 3.8 11.2 5 10H9.2L13 6.2 11.4 4.6 14.5 3.5Z"></path>
+          </svg>
+        </button>
         ${headerInner}
         <button type="button" aria-label="Close">×</button>
       </div>
@@ -206,10 +229,26 @@ function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) 
   `);
 
   const panel = host.querySelector(`[data-ask-chat-id="${id}"]`);
-  panel.querySelector('.ask-chat-header button')?.addEventListener('click', () => closePopover(id));
+  panel.querySelector('.ask-chat-pin')?.addEventListener('click', () => togglePinned(id));
+  panel.querySelector('.ask-chat-header button[aria-label="Close"]')?.addEventListener('click', () => closePopover(id));
   panel.querySelector('.ask-chat-body')?.addEventListener('mouseup', () => handlePanelSelection(id));
   panel.querySelector('.ask-chat-body')?.addEventListener('keyup', () => handlePanelSelection(id));
   attachPanelDrag(id);
+}
+
+function togglePinned(id) {
+  const state = popovers.get(id);
+  const panel = ensureRoot().querySelector(`[data-ask-chat-id="${id}"]`);
+  if (!state || !panel) return;
+
+  state.pinned = !state.pinned;
+  panel.classList.toggle('pinned', state.pinned);
+  const pin = panel.querySelector('.ask-chat-pin');
+  if (pin) {
+    pin.setAttribute('aria-label', state.pinned ? 'Unpin Ask Chat popup' : 'Pin Ask Chat popup');
+    pin.setAttribute('aria-pressed', String(state.pinned));
+    pin.setAttribute('title', state.pinned ? 'Unpin' : 'Pin');
+  }
 }
 
 function clampPanelPosition(left, top, panel) {
@@ -396,15 +435,31 @@ document.addEventListener('keydown', (event) => {
   }
 });
 document.addEventListener('pointerdown', (event) => {
-  if (isInsideAskChat(event.target)) return;
-  let closedButton = false;
+  const clickedAskChat = event.target.closest?.('[data-ask-chat-id]');
+  const clickedAskChatId = clickedAskChat?.dataset?.askChatId || '';
+  const clickedInsideAskChat = Boolean(clickedAskChat);
+  let closedPopover = false;
+
+  if (closeButtonPopovers(clickedAskChatId)) {
+    closedPopover = true;
+  }
+
+  if (clickedInsideAskChat) {
+    if (closedPopover) {
+      suppressNextSelection = true;
+      window.getSelection()?.removeAllRanges();
+    }
+    return;
+  }
+
   for (const [id, state] of popovers) {
-    if (state.mode === 'button') {
+    if (state.mode === 'panel' && !state.pinned) {
       closePopover(id);
-      closedButton = true;
+      closedPopover = true;
     }
   }
-  if (closedButton) {
+  if (closedPopover) {
     suppressNextSelection = true;
+    window.getSelection()?.removeAllRanges();
   }
-});
+}, true);

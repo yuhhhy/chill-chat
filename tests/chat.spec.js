@@ -315,7 +315,13 @@ test('选中助手回复后点击解释并在模型失败时自动 fallback', as
   await expect(page.locator('.selection-lookup-panel')).toHaveCount(1);
   await expect(page.locator('.selection-lookup-trigger button', { hasText: 'Ask Chat' })).toHaveCount(1);
 
+  await page.locator('.selection-lookup-pin').click();
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
   await page.mouse.click(8, 8);
   await expect(page.locator('.selection-lookup-panel')).toHaveCount(1);
+  await expect(page.locator('.selection-lookup-trigger button', { hasText: 'Ask Chat' })).toHaveCount(0);
+
+  await page.locator('.selection-lookup-pin').click();
+  await page.mouse.click(8, 8);
+  await expect(page.locator('.selection-lookup-panel')).toHaveCount(0);
 });

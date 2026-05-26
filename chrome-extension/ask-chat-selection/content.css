@@ -83,7 +83,7 @@
 .ask-chat-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   min-height: 42px;
   padding: 8px 10px 7px 12px;
   border-bottom: 1px solid #eceff5;
@@ -94,6 +94,28 @@
 
 .ask-chat-panel.dragging .ask-chat-header {
   cursor: grabbing;
+}
+
+.ask-chat-header .ask-chat-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transform: rotate(0deg);
+  transition: transform 0.16s ease, background 0.15s, color 0.15s;
+}
+
+.ask-chat-panel.pinned .ask-chat-pin {
+  transform: rotate(-42deg);
+  color: #2f6fdf;
+}
+
+.ask-chat-pin svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: block;
+  fill: currentColor;
 }
 
 .ask-chat-header > span {

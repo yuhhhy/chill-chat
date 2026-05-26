@@ -52,9 +52,16 @@ const LoadingDots = () => (
   </span>
 );
 
+const PinIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M14.5 3.5 20.5 9.5 18.4 11.6 16.8 10 13 13.8V18L11.8 19.2 8.2 15.6 4 19.8 3.2 19 7.4 14.8 3.8 11.2 5 10H9.2L13 6.2 11.4 4.6 14.5 3.5Z" />
+  </svg>
+);
+
 const SelectionLookupPopover = ({
   customModels,
   modelNames,
+  onActivate,
   onClose,
   onRecursiveLookup,
   target,
@@ -65,6 +72,7 @@ const SelectionLookupPopover = ({
   const [content, setContent] = useState('');
   const [activeProvider, setActiveProvider] = useState('');
   const [error, setError] = useState('');
+  const [isPinned, setIsPinned] = useState(false);
   const [userPrompt, setUserPrompt] = useState('');
   const [panelPosition, setPanelPosition] = useState(null);
   const lookupRef = useRef(null);
@@ -84,6 +92,7 @@ const SelectionLookupPopover = ({
     setContent('');
     setActiveProvider('');
     setError('');
+    setIsPinned(false);
     setUserPrompt('');
     setPanelPosition(null);
     lookupRef.current?.cancel();
@@ -91,7 +100,7 @@ const SelectionLookupPopover = ({
   }, [target.id]);
 
   useEffect(() => {
-    if (mode !== 'button') return undefined;
+    if (mode !== 'button' && (mode !== 'result' || isPinned)) return undefined;
 
     const handlePointerDown = (event) => {
       if (popoverRef.current?.contains(event.target)) return;
@@ -112,13 +121,13 @@ const SelectionLookupPopover = ({
       startLookupRef.current?.();
     };
 
-    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('pointerdown', handlePointerDown, true);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [mode, onClose]);
+  }, [isPinned, mode, onClose]);
 
   useEffect(() => {
     return () => {
@@ -143,6 +152,7 @@ const SelectionLookupPopover = ({
 
     lookupRef.current?.cancel();
     setMode('result');
+    onActivate?.();
     setStatus('loading');
     setContent('');
     setError('');
@@ -263,7 +273,7 @@ const SelectionLookupPopover = ({
   return (
     <section
       ref={popoverRef}
-      className="selection-lookup-popover selection-lookup-panel"
+      className={`selection-lookup-popover selection-lookup-panel${isPinned ? ' pinned' : ''}`}
       style={{ left: position.left, top: position.top }}
       aria-live="polite"
     >
@@ -274,6 +284,16 @@ const SelectionLookupPopover = ({
         onPointerUp={endHeaderDrag}
         onPointerCancel={endHeaderDrag}
       >
+        <button
+          type="button"
+          className="selection-lookup-pin"
+          onClick={() => setIsPinned(pinned => !pinned)}
+          aria-label={isPinned ? '取消钉住 Ask Chat 弹窗' : '钉住 Ask Chat 弹窗'}
+          aria-pressed={isPinned}
+          title={isPinned ? '取消钉住' : '钉住'}
+        >
+          <PinIcon />
+        </button>
         <div className="selection-lookup-header-text">
           <span className="selection-lookup-term" title={target.text}>「{target.text}」</span>
           {userPrompt && <span className="selection-lookup-user-prompt" title={userPrompt}>{userPrompt}</span>}
