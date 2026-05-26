@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -43,63 +43,68 @@ function linkCitations(content, citationOrders = []) {
   }).join('\n');
 }
 
-const MarkdownRenderer = ({ content, citationOrders = [], onCitationClick }) => {
-  const renderedContent = linkCitations(content, citationOrders);
+const MarkdownRenderer = React.memo(({ content, citationOrders = [], onCitationClick }) => {
+  const renderedContent = useMemo(
+    () => linkCitations(content, citationOrders),
+    [content, citationOrders]
+  );
+
+  const components = useMemo(() => ({
+    a({ href, children, ...props }) {
+      const citation = typeof href === 'string' ? href.match(/^#rag-source-(\d+)$/) : null;
+      if (citation) {
+        return (
+          <a
+            href={href}
+            className="citation-link"
+            onClick={(event) => {
+              event.preventDefault();
+              onCitationClick?.(Number(citation[1]));
+            }}
+            {...props}
+          >
+            {children}
+          </a>
+        );
+      }
+
+      return <a href={href} {...props}>{children}</a>;
+    },
+    code({ className, children, ...props }) {
+      const isBlockCode = Boolean(className) || String(children).includes('\n');
+
+      if (!isBlockCode) {
+        return (
+          <code className={className} {...props}>
+            {children}
+          </code>
+        );
+      }
+
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    },
+    pre({ children, ...props }) {
+      return (
+        <div className="code-block">
+          <pre {...props}>{children}</pre>
+        </div>
+      );
+    }
+  }), [onCitationClick]);
 
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[rehypeRaw, rehypeHighlight]}
-      components={{
-        a({ href, children, ...props }) {
-          const citation = typeof href === 'string' ? href.match(/^#rag-source-(\d+)$/) : null;
-          if (citation) {
-            return (
-              <a
-                href={href}
-                className="citation-link"
-                onClick={(event) => {
-                  event.preventDefault();
-                  onCitationClick?.(Number(citation[1]));
-                }}
-                {...props}
-              >
-                {children}
-              </a>
-            );
-          }
-
-          return <a href={href} {...props}>{children}</a>;
-        },
-        code({ className, children, ...props }) {
-          const isBlockCode = Boolean(className) || String(children).includes('\n');
-
-          if (!isBlockCode) {
-            return (
-              <code className={className} {...props}>
-                {children}
-              </code>
-            );
-          }
-
-          return (
-            <code className={className} {...props}>
-              {children}
-            </code>
-          );
-        },
-        pre({ children, ...props }) {
-          return (
-            <div className="code-block">
-              <pre {...props}>{children}</pre>
-            </div>
-          );
-        }
-      }}
+      components={components}
     >
       {renderedContent}
     </ReactMarkdown>
   );
-};
+});
 
 export default MarkdownRenderer;

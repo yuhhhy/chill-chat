@@ -124,7 +124,7 @@ const SourcePanel = ({ expandedSources, onToggleSource, retrievalStatus, showAll
   );
 };
 
-const MessageRow = ({ message, isLastAI }) => {
+const MessageRow = React.memo(({ message, isLastAI }) => {
   const deleteChatMessage = useChatStore(s => s.deleteChatMessage);
   const regenerate = useChatStore(s => s.regenerate);
   const isGenerating = useChatStore(s => s.isGenerating);
@@ -343,7 +343,7 @@ const MessageRow = ({ message, isLastAI }) => {
       </div>
     </div>
   );
-};
+}, (prev, next) => prev.message === next.message && prev.isLastAI === next.isLastAI);
 
 const MessageList = () => {
   const messages = useChatStore(s => s.messages);
