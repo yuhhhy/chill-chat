@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { useChatStore } from "../../stores/chatStore";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -6,6 +6,7 @@ import { useUIStore } from "../../stores/uiStore";
 import MarkdownRenderer from "../MarkdownRenderer/MarkdownRenderer";
 import ModelAvatar from "../ModelAvatar/ModelAvatar";
 import MoreActionMenu from "../MoreActionMenu/MoreActionMenu";
+import SelectionLookupPopover from "./SelectionLookupPopover";
 
 const CopyIcon = () => (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -60,10 +61,31 @@ const RotatingThinkingStatus = () => {
   return <span>{thinkingStatusMessages[messageIndex]}</span>;
 };
 
-const ReasoningPanel = ({ content, isGenerating }) => {
+const ReasoningPanel = ({ content, hasResponseContent, isGenerating }) => {
+  const [isOpen, setIsOpen] = useState(() => isGenerating && !hasResponseContent);
+  const hadResponseContent = useRef(hasResponseContent);
+
+  useEffect(() => {
+    if (!content) return;
+
+    if (isGenerating && !hasResponseContent) {
+      setIsOpen(true);
+    }
+
+    if (!hadResponseContent.current && hasResponseContent) {
+      setIsOpen(false);
+    }
+
+    hadResponseContent.current = hasResponseContent;
+  }, [content, hasResponseContent, isGenerating]);
+
   if (!content) return null;
   return (
-    <details className="reasoning-panel" open={isGenerating}>
+    <details
+      className="reasoning-panel"
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
       <summary>
         <span className="reasoning-chevron" />
         <span>{isGenerating ? "正在思考" : "思考过程"}</span>
@@ -124,7 +146,20 @@ const SourcePanel = ({ expandedSources, onToggleSource, retrievalStatus, showAll
   );
 };
 
-const MessageRow = React.memo(({ message, isLastAI }) => {
+function getSelectionRect(range) {
+  const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
+  const rect = rects[rects.length - 1] || range.getBoundingClientRect();
+  return {
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height
+  };
+}
+
+const MessageRow = React.memo(({ message, isLastAI, onSelectionLookup, previousUserContent }) => {
   const deleteChatMessage = useChatStore(s => s.deleteChatMessage);
   const regenerate = useChatStore(s => s.regenerate);
   const isGenerating = useChatStore(s => s.isGenerating);
@@ -140,9 +175,38 @@ const MessageRow = React.memo(({ message, isLastAI }) => {
   const [expandedSources, setExpandedSources] = useState(() => new Set());
   const [showAllSources, setShowAllSources] = useState(false);
   const sourceRefs = useRef(new Map());
+  const markdownRef = useRef(null);
   const messageProvider = message.modelProvider || 'deepseek';
   const isMessageGenerating = message.status === "generating";
   const citationOrders = (message.sources || []).map((source, index) => Number(source.order || index + 1));
+
+  const handleSelectionLookup = () => {
+    if (isEditing || !markdownRef.current) return;
+
+    window.setTimeout(() => {
+      const selection = window.getSelection?.();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+
+      const anchorNode = selection.anchorNode;
+      const focusNode = selection.focusNode;
+      if (!anchorNode || !focusNode || !markdownRef.current) return;
+      if (!markdownRef.current.contains(anchorNode) || !markdownRef.current.contains(focusNode)) return;
+
+      const range = selection.getRangeAt(0);
+      if (!markdownRef.current.contains(range.commonAncestorContainer)) return;
+
+      const text = selection.toString().trim().replace(/\s+/g, ' ');
+      if (!text) return;
+
+      onSelectionLookup({
+        id: `${message.id}:${Date.now()}`,
+        assistantContent: message.content,
+        previousUserContent,
+        rect: getSelectionRect(range),
+        text
+      });
+    }, 0);
+  };
 
   const handleToggleSource = (order, isOpen) => {
     setExpandedSources((current) => {
@@ -267,7 +331,11 @@ const MessageRow = React.memo(({ message, isLastAI }) => {
     <div className="message-item ai-message">
       <ModelAvatar provider={messageProvider} className="message-avatar" />
       <div className={`message-content${isEditing ? " editing" : ""}`}>
-        <ReasoningPanel content={message.reasoningContent} isGenerating={isMessageGenerating} />
+        <ReasoningPanel
+          content={message.reasoningContent}
+          hasResponseContent={Boolean(message.content)}
+          isGenerating={isMessageGenerating}
+        />
         {isEditing ? (
           <div className="message-edit-form">
             <textarea
@@ -295,7 +363,12 @@ const MessageRow = React.memo(({ message, isLastAI }) => {
             {message.reasoningContent ? <span>正在生成回复</span> : <RotatingThinkingStatus />}
           </div>
         ) : (
-          <div className="markdown-content">
+          <div
+            className="markdown-content"
+            ref={markdownRef}
+            onMouseUp={handleSelectionLookup}
+            onKeyUp={handleSelectionLookup}
+          >
             <MarkdownRenderer
               citationOrders={citationOrders}
               content={message.content}
@@ -343,13 +416,32 @@ const MessageRow = React.memo(({ message, isLastAI }) => {
       </div>
     </div>
   );
-}, (prev, next) => prev.message === next.message && prev.isLastAI === next.isLastAI);
+}, (prev, next) => (
+  prev.message === next.message
+  && prev.isLastAI === next.isLastAI
+  && prev.previousUserContent === next.previousUserContent
+));
+
+function getPreviousUserContent(messages, index) {
+  for (let i = index - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') return messages[i].content || '';
+  }
+  return '';
+}
 
 const MessageList = () => {
   const messages = useChatStore(s => s.messages);
   const setIsAtBottom = useUIStore(s => s.setIsAtBottom);
   const virtuosoRef = useUIStore(s => s.virtuosoRef);
+  const currentProvider = useSettingsStore(s => s.modelProvider);
+  const customModels = useSettingsStore(s => s.customModels);
+  const modelNames = useSettingsStore(s => s.modelNames);
+  const [lookupTarget, setLookupTarget] = useState(null);
   const lastAiIndex = messages.findLastIndex(m => m.role === "assistant");
+
+  const handleSelectionLookup = useCallback((target) => {
+    setLookupTarget(target);
+  }, []);
 
   return (
     <div className="result">
@@ -364,12 +456,23 @@ const MessageList = () => {
               key={message.id || index}
               message={message}
               isLastAI={index === lastAiIndex}
+              onSelectionLookup={handleSelectionLookup}
+              previousUserContent={getPreviousUserContent(messages, index)}
             />
           )}
           atBottomStateChange={(bottom) => setIsAtBottom(bottom)}
           overscan={240}
         />
       </div>
+      {lookupTarget && (
+        <SelectionLookupPopover
+          currentProvider={currentProvider}
+          customModels={customModels}
+          modelNames={modelNames}
+          onClose={() => setLookupTarget(null)}
+          target={lookupTarget}
+        />
+      )}
     </div>
   );
 };

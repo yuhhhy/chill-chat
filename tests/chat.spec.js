@@ -119,3 +119,182 @@ test('RAG 来源完整展示并支持点击回答引用', async ({ page }) => {
   await expect(page.locator('.source-chip').nth(3)).toHaveAttribute('open', '');
   await expect(page.locator('.source-chip').nth(3).locator('.source-full-content')).toContainText('完整片段内容');
 });
+
+test('正文开始生成时自动折叠思考过程', async ({ page }) => {
+  const session = { id: 'reasoning-collapse-test', title: 'Reasoning collapse test', created_at: 1 };
+  const longAnswer = '这是正文内容，应该在出现时立刻折叠思考过程。'.repeat(120);
+
+  await page.route(`${BASE_URL}/api/**`, async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+
+    if (path === '/api/sessions') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify([session]) });
+      return;
+    }
+    if (path === '/api/config/models') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ deepseek: 'DeepSeek' }) });
+      return;
+    }
+    if (path === '/api/config/custom-models') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ customModels: [] }) });
+      return;
+    }
+    if (path === '/api/rag/collections' || path === '/api/prompts') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify([]) });
+      return;
+    }
+    if (path === `/api/sessions/${session.id}/messages`) {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({ contentType: 'application/json', body: JSON.stringify(session) });
+        return;
+      }
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify([]) });
+      return;
+    }
+    if (path === '/api/chat-runs' && route.request().method() === 'POST') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ runId: 'reasoning-collapse-run', status: 'running' })
+      });
+      return;
+    }
+    if (path === '/api/chat-runs/reasoning-collapse-run/events') {
+      await route.fulfill({
+        contentType: 'text/event-stream',
+        body: [
+          'id: 1\nevent: delta\ndata: {"type":"reasoning","content":"先分析问题，再组织答案。"}\n\n',
+          `id: 2\nevent: delta\ndata: ${JSON.stringify({ type: 'content', content: longAnswer })}\n\n`,
+          'id: 3\nevent: done\ndata: {}\n\n'
+        ].join('')
+      });
+      return;
+    }
+
+    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: path }) });
+  });
+
+  await page.goto(`${BASE_URL}/chat/${session.id}`);
+  const input = page.locator('textarea[placeholder="给 chillAI 发送消息"]').first();
+  await input.fill('请解释自动折叠');
+  await input.press('Enter');
+
+  const reasoningPanel = page.locator('.ai-message .reasoning-panel').last();
+  await expect(reasoningPanel).toHaveAttribute('open', '');
+  await expect(page.locator('.ai-message .markdown-content').last()).toContainText('这是正文内容');
+  await expect(reasoningPanel).not.toHaveAttribute('open', '');
+});
+
+test('选中助手回复后点击解释并在模型失败时自动 fallback', async ({ page }) => {
+  const session = { id: 'selection-lookup-test', title: 'Selection lookup test', created_at: 1 };
+  const posts = [];
+
+  await page.route(`${BASE_URL}/api/**`, async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+
+    if (path === '/api/sessions') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify([session]) });
+      return;
+    }
+    if (path === '/api/config/models') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ deepseek: 'deepseek-test', chatgpt: 'gpt-test' }) });
+      return;
+    }
+    if (path === '/api/config/custom-models') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ customModels: [] }) });
+      return;
+    }
+    if (path === '/api/rag/collections') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify([]) });
+      return;
+    }
+    if (path === `/api/sessions/${session.id}/messages`) {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 'user-1',
+            session_id: session.id,
+            role: 'user',
+            content: '解释 DOM',
+            created_at: 1,
+            reasoning_content: '',
+            model_provider: 'deepseek',
+            status: 'completed',
+            sources: []
+          },
+          {
+            id: 'assistant-1',
+            session_id: session.id,
+            role: 'assistant',
+            content: 'DOM 的根对象通常指 document，它代表当前页面文档。',
+            created_at: 2,
+            reasoning_content: '',
+            model_provider: 'deepseek',
+            status: 'completed',
+            sources: []
+          }
+        ])
+      });
+      return;
+    }
+    if (path === '/api/chat-runs' && route.request().method() === 'POST') {
+      const body = route.request().postDataJSON();
+      posts.push(body);
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ runId: `lookup-run-${posts.length}`, status: 'running' })
+      });
+      return;
+    }
+    if (path === '/api/chat-runs/lookup-run-1/events') {
+      await route.fulfill({
+        contentType: 'text/event-stream',
+        body: 'id: 1\nevent: error\ndata: {"message":"deepseek failed"}\n\n'
+      });
+      return;
+    }
+    if (path === '/api/chat-runs/lookup-run-2/events') {
+      await route.fulfill({
+        contentType: 'text/event-stream',
+        body: [
+          'id: 1\nevent: delta\ndata: {"type":"content","content":"根对象是页面文档结构的"}\n\n',
+          'id: 2\nevent: delta\ndata: {"type":"content","content":"入口对象。"}\n\n',
+          'id: 3\nevent: done\ndata: {}\n\n'
+        ].join('')
+      });
+      return;
+    }
+    if (path.startsWith('/api/chat-runs/') && path.endsWith('/cancel')) {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 'cancelled' }) });
+      return;
+    }
+
+    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: path }) });
+  });
+
+  await page.goto(`${BASE_URL}/chat/${session.id}`);
+  const assistant = page.locator('.ai-message .markdown-content').last();
+  await expect(assistant).toContainText('根对象');
+
+  await assistant.evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node && !node.textContent.includes('根对象')) node = walker.nextNode();
+    const start = node.textContent.indexOf('根对象');
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + '根对象'.length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+
+  await page.locator('.selection-lookup-trigger button', { hasText: '解释' }).click();
+  await expect(page.locator('.selection-lookup-body')).toContainText('根对象是页面文档结构的入口对象');
+  expect(posts.map(post => post.provider)).toEqual(['deepseek', 'chatgpt']);
+  expect(posts[0].messages[0].content).toContain('用户上一问：\n解释 DOM');
+  expect(posts[0].messages[0].content).toContain('选中文本：\n「根对象」');
+});
