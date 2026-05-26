@@ -193,6 +193,122 @@
   white-space: normal;
 }
 
+.ask-chat-body p {
+  margin: 0.55em 0;
+}
+
+.ask-chat-body p:first-child,
+.ask-chat-body ul:first-child,
+.ask-chat-body ol:first-child,
+.ask-chat-body blockquote:first-child,
+.ask-chat-body pre:first-child,
+.ask-chat-body table:first-child {
+  margin-top: 0;
+}
+
+.ask-chat-body p:last-child,
+.ask-chat-body ul:last-child,
+.ask-chat-body ol:last-child,
+.ask-chat-body blockquote:last-child,
+.ask-chat-body pre:last-child,
+.ask-chat-body table:last-child {
+  margin-bottom: 0;
+}
+
+.ask-chat-body ul,
+.ask-chat-body ol {
+  margin: 0.55em 0;
+  padding-left: 1.25em;
+}
+
+.ask-chat-body ul ul,
+.ask-chat-body ul ol,
+.ask-chat-body ol ul,
+.ask-chat-body ol ol {
+  margin: 0.25em 0;
+}
+
+.ask-chat-body li {
+  margin: 0.25em 0;
+}
+
+.ask-chat-body code {
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: #eef1f5;
+  color: #202124;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.ask-chat-body strong {
+  color: #202124;
+  font-weight: 700;
+}
+
+.ask-chat-body em {
+  font-style: italic;
+}
+
+.ask-chat-body pre {
+  max-width: 100%;
+  margin: 0.65em 0;
+  padding: 9px 10px;
+  overflow: auto;
+  border: 1px solid #e0e4ec;
+  border-radius: 7px;
+  background: #f6f8fb;
+  color: #202124;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.ask-chat-body pre code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: inherit;
+}
+
+.ask-chat-body a {
+  color: #2f6fdf;
+  text-decoration: none;
+}
+
+.ask-chat-body a:hover {
+  text-decoration: underline;
+}
+
+.ask-chat-body blockquote {
+  margin: 0.65em 0;
+  padding: 2px 0 2px 10px;
+  border-left: 3px solid #d7dce6;
+  color: #5d6573;
+}
+
+.ask-chat-body table {
+  width: 100%;
+  margin: 0.65em 0;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.ask-chat-body th,
+.ask-chat-body td {
+  padding: 6px 7px;
+  border: 1px solid #e0e4ec;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ask-chat-body th {
+  background: #f4f6fa;
+  color: #202124;
+  font-weight: 700;
+}
+
 .ask-chat-muted {
   color: #8c94a3;
 }

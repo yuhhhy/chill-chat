@@ -134,6 +134,157 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
+function renderInlineMarkdown(text) {
+  return escapeHtml(text)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer noopener">$1</a>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/_([^_]+)_/g, '<em>$1</em>');
+}
+
+function renderMarkdown(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const html = [];
+  let paragraph = [];
+  let listStack = [];
+  let blockquote = [];
+  let tableRows = [];
+  let codeBlock = null;
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`<p>${renderInlineMarkdown(paragraph.join(' '))}</p>`);
+    paragraph = [];
+  };
+
+  const flushLists = () => {
+    while (listStack.length) {
+      html.push(`</${listStack.pop().type}>`);
+    }
+  };
+
+  const flushBlockquote = () => {
+    if (!blockquote.length) return;
+    html.push(`<blockquote>${blockquote.map(item => `<p>${renderInlineMarkdown(item)}</p>`).join('')}</blockquote>`);
+    blockquote = [];
+  };
+
+  const isSeparatorRow = (cells) => cells.length > 0 && cells.every(cell => /^:?-{3,}:?$/.test(cell.trim()));
+
+  const renderTable = (rows) => {
+    if (rows.length < 2) {
+      rows.forEach(row => paragraph.push(row.raw));
+      return;
+    }
+
+    const [header, separator, ...body] = rows;
+    if (!isSeparatorRow(separator.cells)) {
+      rows.forEach(row => paragraph.push(row.raw));
+      return;
+    }
+
+    const head = `<thead><tr>${header.cells.map(cell => `<th>${renderInlineMarkdown(cell.trim())}</th>`).join('')}</tr></thead>`;
+    const bodyHtml = body.length
+      ? `<tbody>${body.map(row => `<tr>${row.cells.map(cell => `<td>${renderInlineMarkdown(cell.trim())}</td>`).join('')}</tr>`).join('')}</tbody>`
+      : '';
+    html.push(`<table>${head}${bodyHtml}</table>`);
+  };
+
+  const flushTable = () => {
+    if (!tableRows.length) return;
+    renderTable(tableRows);
+    tableRows = [];
+  };
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^```(.*)$/);
+    if (fenceMatch) {
+      flushParagraph();
+      flushLists();
+      flushBlockquote();
+      flushTable();
+      if (codeBlock) {
+        html.push(`<pre><code>${escapeHtml(codeBlock.lines.join('\n'))}</code></pre>`);
+        codeBlock = null;
+      } else {
+        codeBlock = { language: fenceMatch[1].trim(), lines: [] };
+      }
+      continue;
+    }
+
+    if (codeBlock) {
+      codeBlock.lines.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushLists();
+      flushBlockquote();
+      flushTable();
+      continue;
+    }
+
+    const tableMatch = trimmed.includes('|') ? trimmed.split('|').map(cell => cell.trim()).filter((cell, index, cells) => !(index === 0 && cell === '') && !(index === cells.length - 1 && cell === '')) : null;
+    if (tableMatch && tableMatch.length >= 2) {
+      flushParagraph();
+      flushLists();
+      flushBlockquote();
+      tableRows.push({ raw: trimmed, cells: tableMatch });
+      continue;
+    }
+
+    flushTable();
+
+    const quoteMatch = trimmed.match(/^>\s?(.*)$/);
+    if (quoteMatch) {
+      flushParagraph();
+      flushLists();
+      blockquote.push(quoteMatch[1]);
+      continue;
+    }
+
+    flushBlockquote();
+
+    const listMatch = line.match(/^(\s*)([-*]|\d+\.)\s+(.+)$/);
+    if (listMatch) {
+      flushParagraph();
+      const indent = Math.floor(listMatch[1].replace(/\t/g, '  ').length / 2);
+      const type = /^\d+\.$/.test(listMatch[2]) ? 'ol' : 'ul';
+
+      while (listStack.length > indent + 1) {
+        html.push(`</${listStack.pop().type}>`);
+      }
+      while (listStack.length < indent + 1) {
+        html.push(`<${type}>`);
+        listStack.push({ type });
+      }
+      if (listStack[listStack.length - 1].type !== type) {
+        html.push(`</${listStack.pop().type}>`);
+        html.push(`<${type}>`);
+        listStack.push({ type });
+      }
+      html.push(`<li>${renderInlineMarkdown(listMatch[3])}</li>`);
+      continue;
+    }
+
+    flushLists();
+    paragraph.push(trimmed);
+  }
+
+  if (codeBlock) {
+    html.push(`<pre><code>${escapeHtml(codeBlock.lines.join('\n'))}</code></pre>`);
+  }
+  flushParagraph();
+  flushLists();
+  flushBlockquote();
+  flushTable();
+  return html.join('');
+}
+
 function createPopover(target) {
   const id = `ask-chat-${nextPopoverId}`;
   nextPopoverId += 1;
@@ -142,6 +293,7 @@ function createPopover(target) {
     target,
     requestId: '',
     content: '',
+    intent: target.intent || 'explain',
     pinned: false,
     panelPosition: null,
     dragState: null
@@ -154,6 +306,14 @@ function removePopoverElement(id) {
 }
 
 function closePopover(id) {
+  const state = popovers.get(id);
+  if (state?.requestId) {
+    chrome.runtime.sendMessage({
+      type: 'ASK_CHAT_CANCEL',
+      requestId: state.requestId
+    }).catch(() => {});
+    state.requestId = '';
+  }
   removePopoverElement(id);
   popovers.delete(id);
 }
@@ -172,11 +332,11 @@ function renderButton(target) {
     </div>
   `);
   const trigger = host.querySelector(`[data-ask-chat-id="${id}"]`);
-  trigger.querySelector('button')?.addEventListener('click', () => startLookup(id));
+  trigger.querySelector('button')?.addEventListener('click', () => startLookup(id, 'explain'));
   trigger.querySelector('input')?.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    startLookup(id);
+    startLookup(id, 'explain');
   });
 }
 
@@ -202,10 +362,10 @@ function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) 
   if (content) state.content = content;
 
   const body = state.content
-    ? escapeHtml(state.content).replace(/\n/g, '<br>')
+    ? renderMarkdown(state.content)
     : status === 'error'
       ? `<span class="ask-chat-error">${escapeHtml(error)}</span>`
-      : '<span class="ask-chat-muted">等待模型返回解释</span>';
+      : `<span class="ask-chat-muted">等待模型返回${state.intent === 'translate' ? '翻译' : '解释'}</span>`;
 
   const headerInner = state.userPrompt
     ? `<div class="ask-chat-header-text"><span title="${escapeHtml(state.target.text)}">「${escapeHtml(state.target.text)}」</span><span class="ask-chat-user-prompt" title="${escapeHtml(state.userPrompt)}">${escapeHtml(state.userPrompt)}</span></div>`
@@ -223,7 +383,7 @@ function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) 
         ${headerInner}
         <button type="button" aria-label="Close">×</button>
       </div>
-      <div class="ask-chat-meta">${status === 'loading' ? '正在询问模型' : status === 'error' ? '解释失败' : 'Ask Chat'}</div>
+      <div class="ask-chat-meta">${status === 'loading' ? (state.intent === 'translate' ? '正在翻译' : '正在询问模型') : status === 'error' ? (state.intent === 'translate' ? '翻译失败' : '解释失败') : (state.intent === 'translate' ? '翻译完成' : 'Ask Chat')}</div>
       <div class="ask-chat-body" data-content="${escapeHtml(state.content)}">${body}</div>
     </section>
   `);
@@ -306,7 +466,7 @@ function attachPanelDrag(id) {
   header.addEventListener('pointercancel', endDrag);
 }
 
-async function startLookup(id) {
+async function startLookup(id, intent = 'explain') {
   const state = popovers.get(id);
   if (!state) return;
 
@@ -314,7 +474,8 @@ async function startLookup(id) {
   const trigger = ensureRoot().querySelector(`[data-ask-chat-id="${id}"]`);
   state.requestId = requestId;
   state.content = '';
-  state.userPrompt = trigger?.querySelector('input')?.value?.trim() || state.userPrompt || '';
+  state.intent = intent;
+  state.userPrompt = intent === 'translate' ? '' : (trigger?.querySelector('input')?.value?.trim() || state.userPrompt || '');
   renderPanel(id, { status: 'loading' });
 
   let response;
@@ -327,7 +488,8 @@ async function startLookup(id) {
         surroundingText: state.target.surroundingText,
         pageTitle: state.target.pageTitle || document.title,
         pageUrl: state.target.pageUrl || location.href,
-        userPrompt: state.userPrompt
+        userPrompt: state.userPrompt,
+        intent
       }
     });
   } catch {
@@ -404,7 +566,7 @@ chrome.runtime.onMessage.addListener((message) => {
   const body = ensureRoot().querySelector(`[data-ask-chat-id="${state.id}"] .ask-chat-body`);
   if (!body) return;
   body.dataset.content = state.content;
-  body.innerHTML = escapeHtml(state.content).replace(/\n/g, '<br>');
+  body.innerHTML = renderMarkdown(state.content);
 });
 
 document.addEventListener('mouseup', (event) => {
@@ -415,7 +577,9 @@ document.addEventListener('mouseup', (event) => {
 document.addEventListener('keyup', handlePageSelection);
 
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Enter' || event.isComposing) return;
+  if (event.isComposing) return;
+  const key = event.key.toLowerCase();
+  if (event.key !== 'Enter' && key !== 't') return;
 
   const buttonPopovers = [...popovers.entries()].filter(([, state]) => state.mode === 'button');
   if (!buttonPopovers.length) return;
@@ -426,12 +590,12 @@ document.addEventListener('keydown', (event) => {
     target.tagName === 'TEXTAREA' ||
     target.contentEditable === 'true'
   );
-  if (isOtherInteractive) return;
+  if (isOtherInteractive || (key === 't' && isInsideAskChat(target))) return;
 
   event.preventDefault();
   suppressNextSelection = true;
   for (const [id] of buttonPopovers) {
-    startLookup(id);
+    startLookup(id, key === 't' ? 'translate' : 'explain');
   }
 });
 document.addEventListener('pointerdown', (event) => {
