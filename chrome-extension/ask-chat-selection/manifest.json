@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Ask Chat Selection",
+  "version": "0.1.0",
+  "description": "Select text on any page and ask an AI model for a contextual explanation.",
+  "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html",
+  "action": {
+    "default_title": "Ask Chat Selection",
+    "default_popup": "options.html"
+  }
+}
