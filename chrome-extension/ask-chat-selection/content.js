@@ -1,7 +1,25 @@
 const ASK_CHAT_ROOT_ID = 'ask-chat-selection-root';
 const MAX_CONTEXT_CHARS = 5000;
 const MAX_LOCAL_CONTEXT_CHARS = 1800;
-const MAX_PAGE_CONTEXT_CHARS = 2600;
+const MAX_PAGE_CONTEXT_CHARS = 1600;
+const LOW_VALUE_SELECTOR = [
+  'nav',
+  'header',
+  'footer',
+  'aside',
+  'script',
+  'style',
+  'noscript',
+  'form',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  '[role="navigation"]',
+  '[role="banner"]',
+  '[role="contentinfo"]',
+  '[aria-hidden="true"]'
+].join(',');
 const THINKING_STATUS_INTERVAL_MS = 4400;
 const THINKING_STATUS_MESSAGES = [
   '思考中',
@@ -83,43 +101,101 @@ function getElementText(element) {
   return normalizeText(element?.innerText || element?.textContent || '');
 }
 
-function getBlockElement(node) {
-  return node?.parentElement?.closest('p, li, blockquote, td, th, pre, article, section, main, div') || document.body;
+function getCleanElementText(element) {
+  if (!element) return '';
+  const clone = element.cloneNode(true);
+  clone.querySelectorAll(LOW_VALUE_SELECTOR).forEach(node => node.remove());
+  return getElementText(clone);
 }
 
-function getNearestHeading(element) {
+function getPageLanguage() {
+  return document.documentElement.lang || document.querySelector('meta[http-equiv="content-language"]')?.content || '';
+}
+
+function isLowValueElement(element) {
+  return Boolean(element?.closest?.(LOW_VALUE_SELECTOR));
+}
+
+function getBlockElement(node) {
+  return node?.parentElement?.closest('p, li, blockquote, td, th, pre, tr, article, section, main, div') || document.body;
+}
+
+function getSemanticBlock(node) {
+  const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+  if (!element) return document.body;
+  return element.closest('td, th, tr, li, p, blockquote, pre, article, section, main, [role="article"], [role="main"], div') || document.body;
+}
+
+function getHeadingText(element) {
+  const text = getElementText(element);
+  return text.length > 160 ? `${text.slice(0, 160)}...` : text;
+}
+
+function getHeadingChain(element) {
+  const headings = [];
   let current = element;
   while (current && current !== document.body) {
     let sibling = current.previousElementSibling;
     while (sibling) {
-      if (/^H[1-6]$/.test(sibling.tagName)) return getElementText(sibling);
+      if (/^H[1-6]$/.test(sibling.tagName)) {
+        headings.unshift(getHeadingText(sibling));
+        break;
+      }
       const heading = sibling.querySelector?.('h1, h2, h3, h4, h5, h6');
-      if (heading) return getElementText(heading);
+      if (heading) {
+        headings.unshift(getHeadingText(heading));
+        break;
+      }
       sibling = sibling.previousElementSibling;
     }
     current = current.parentElement;
   }
 
-  const visibleHeadings = Array.from(document.querySelectorAll('h1, h2, h3'))
-    .map(getElementText)
+  const pageTitle = getHeadingText(document.querySelector('h1')) || document.title;
+  return [pageTitle, ...headings]
     .filter(Boolean);
-  return visibleHeadings.slice(0, 3).join(' / ');
 }
 
-function getMainText() {
+function getLinkDensity(element) {
+  const textLength = getCleanElementText(element).length || 1;
+  const linkLength = Array.from(element?.querySelectorAll?.('a') || [])
+    .reduce((sum, link) => sum + getElementText(link).length, 0);
+  return linkLength / textLength;
+}
+
+function scoreMainCandidate(element, selectedText) {
+  if (!element || isLowValueElement(element)) return -Infinity;
+  const text = getCleanElementText(element);
+  if (text.length < 40) return -Infinity;
+  const linkDensity = getLinkDensity(element);
+  let score = Math.min(text.length, 3500);
+  if (text.includes(selectedText)) score += 2400;
+  if (element.matches?.('article, main, [role="main"], [role="article"]')) score += 800;
+  if (element.querySelector?.('h1, h2, h3')) score += 250;
+  score -= linkDensity * 1800;
+  return score;
+}
+
+function getMainText(selectedText) {
   const candidates = [
     document.querySelector('article'),
     document.querySelector('main'),
     document.querySelector('[role="main"]'),
+    document.querySelector('[role="article"]'),
+    ...Array.from(document.querySelectorAll('section, article, main, [role="main"], [role="article"]')).slice(0, 80),
     document.body
   ].filter(Boolean);
 
-  let best = '';
+  let best = null;
+  let bestScore = -Infinity;
   for (const candidate of candidates) {
-    const text = getElementText(candidate);
-    if (text.length > best.length) best = text;
+    const score = scoreMainCandidate(candidate, selectedText);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
   }
-  return best;
+  return getCleanElementText(best || document.body);
 }
 
 function windowAroundSelection(text, selectedText, maxChars) {
@@ -133,16 +209,121 @@ function windowAroundSelection(text, selectedText, maxChars) {
   return text.slice(start, start + maxChars);
 }
 
-function getSurroundingText(selection) {
+function getSiblingContext(block, direction) {
+  let sibling = direction === 'previous' ? block?.previousElementSibling : block?.nextElementSibling;
+  while (sibling) {
+    if (!isLowValueElement(sibling)) {
+      const text = getCleanElementText(sibling);
+      if (text) return text.slice(0, 900);
+    }
+    sibling = direction === 'previous' ? sibling.previousElementSibling : sibling.nextElementSibling;
+  }
+  return '';
+}
+
+function getSelectionStructure(selection, block) {
+  const element = selection.anchorNode?.nodeType === Node.ELEMENT_NODE
+    ? selection.anchorNode
+    : selection.anchorNode?.parentElement;
+  const link = element?.closest?.('a[href]');
+  const button = element?.closest?.('button, [role="button"]');
+  const tableCell = element?.closest?.('td, th');
+  const tableRow = element?.closest?.('tr');
+  const listItem = element?.closest?.('li');
+  const codeBlock = element?.closest?.('pre, code');
+
+  return [
+    `所在标签：${block?.tagName?.toLowerCase() || 'unknown'}`,
+    link && `链接地址：${link.href}`,
+    button && '位于按钮/可点击控件中',
+    tableCell && '位于表格单元格中',
+    tableRow && '位于表格行中',
+    listItem && '位于列表项中',
+    codeBlock && '位于代码/预格式文本中'
+  ].filter(Boolean).join('\n');
+}
+
+function getTableContext(selection) {
+  const element = selection.anchorNode?.nodeType === Node.ELEMENT_NODE
+    ? selection.anchorNode
+    : selection.anchorNode?.parentElement;
+  const row = element?.closest?.('tr');
+  const table = element?.closest?.('table');
+  if (!row || !table) return '';
+
+  const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
+  const headers = Array.from(headerRow?.children || [])
+    .map(cell => getElementText(cell))
+    .filter(Boolean)
+    .join(' | ');
+  const rowText = Array.from(row.children || [])
+    .map(cell => getElementText(cell))
+    .filter(Boolean)
+    .join(' | ');
+
+  return [
+    headers && `表头：${headers}`,
+    rowText && `当前行：${rowText}`
+  ].filter(Boolean).join('\n');
+}
+
+function formatContextSection(title, content) {
+  const text = String(content || '').trim();
+  return text ? `【${title}】\n${text}` : '';
+}
+
+function buildSelectionContext(selection) {
   const selectedText = normalizeText(selection.toString());
-  const block = getBlockElement(selection.anchorNode);
-  const localText = windowAroundSelection(getElementText(block), selectedText, MAX_LOCAL_CONTEXT_CHARS);
-  const pageText = windowAroundSelection(getMainText(), selectedText, MAX_PAGE_CONTEXT_CHARS);
+  const block = getSemanticBlock(selection.anchorNode) || getBlockElement(selection.anchorNode);
+  const localText = windowAroundSelection(getCleanElementText(block), selectedText, MAX_LOCAL_CONTEXT_CHARS);
+  const previousText = getSiblingContext(block, 'previous');
+  const nextText = getSiblingContext(block, 'next');
+  const tableContext = getTableContext(selection);
+  const mainText = windowAroundSelection(getMainText(selectedText), selectedText, MAX_PAGE_CONTEXT_CHARS);
+  const context = {
+    selectedText,
+    page: {
+      title: document.title || '',
+      url: location.href,
+      language: getPageLanguage() || '',
+      description: getMetaDescription()
+    },
+    selection: {
+      blockTag: block?.tagName?.toLowerCase() || 'unknown',
+      structureText: getSelectionStructure(selection, block),
+      tableContext
+    },
+    domPath: getHeadingChain(block),
+    localContext: {
+      previousText,
+      currentText: localText,
+      nextText
+    },
+    mainContext: mainText
+  };
+
+  context.formattedText = formatSelectionContext(context);
+  return context;
+}
+
+function formatSelectionContext(context) {
   const contextParts = [
-    getMetaDescription() && `页面摘要：${getMetaDescription()}`,
-    getNearestHeading(block) && `附近标题：${getNearestHeading(block)}`,
-    localText && `选区所在段落/区块：${localText}`,
-    pageText && `页面正文相关片段：${pageText}`
+    formatContextSection('选区结构', [
+      `标题链路：${context.domPath.join(' > ') || '无'}`,
+      context.selection.structureText,
+      context.selection.tableContext
+    ].filter(Boolean).join('\n')),
+    formatContextSection('附近正文', [
+      context.localContext.previousText && `前一段：${context.localContext.previousText}`,
+      context.localContext.currentText && `当前语义块：${context.localContext.currentText}`,
+      context.localContext.nextText && `后一段：${context.localContext.nextText}`
+    ].filter(Boolean).join('\n')),
+    formatContextSection('页面正文片段', context.mainContext),
+    formatContextSection('页面信息', [
+      `标题：${context.page.title || '无'}`,
+      `语言：${context.page.language || '未知'}`,
+      context.page.description && `摘要：${context.page.description}`
+    ].filter(Boolean).join('\n'))
   ].filter(Boolean);
 
   return contextParts.join('\n\n').slice(0, MAX_CONTEXT_CHARS);
@@ -319,6 +500,7 @@ function createPopover(target) {
     intent: target.intent || 'explain',
     waitingIndex: getRandomThinkingStatusIndex(),
     waitingTimer: null,
+    actionMenuPosition: null,
     pinned: false,
     panelPosition: null,
     dragState: null
@@ -328,20 +510,24 @@ function createPopover(target) {
 
 function removePopoverElement(id) {
   ensureRoot().querySelector(`[data-ask-chat-id="${id}"]`)?.remove();
+  ensureRoot().querySelector(`[data-ask-chat-menu-id="${id}"]`)?.remove();
 }
 
 function closePopover(id) {
   const state = popovers.get(id);
   stopWaitingRotation(state);
-  if (state?.requestId) {
-    chrome.runtime.sendMessage({
-      type: 'ASK_CHAT_CANCEL',
-      requestId: state.requestId
-    }).catch(() => {});
-    state.requestId = '';
-  }
+  cancelActiveRequest(state);
   removePopoverElement(id);
   popovers.delete(id);
+}
+
+function cancelActiveRequest(state) {
+  if (!state?.requestId) return;
+  chrome.runtime.sendMessage({
+    type: 'ASK_CHAT_CANCEL',
+    requestId: state.requestId
+  }).catch(() => {});
+  state.requestId = '';
 }
 
 function stopWaitingRotation(state) {
@@ -401,6 +587,57 @@ function closeButtonPopovers(exceptId = '') {
   return closed;
 }
 
+function closeActionMenus(exceptId = '') {
+  for (const [id, state] of popovers) {
+    if (id !== exceptId) state.actionMenuPosition = null;
+  }
+  ensureRoot().querySelectorAll('[data-ask-chat-menu-id]').forEach((menu) => {
+    if (menu.dataset.askChatMenuId !== exceptId) menu.remove();
+  });
+}
+
+function clampActionMenuPosition(left, top) {
+  const margin = 8;
+  const width = 132;
+  const height = 42;
+  return {
+    left: Math.min(Math.max(left, margin), Math.max(margin, window.innerWidth - width - margin)),
+    top: Math.min(Math.max(top, margin), Math.max(margin, window.innerHeight - height - margin))
+  };
+}
+
+function renderActionMenu(id, clientX, clientY) {
+  const state = popovers.get(id);
+  if (!state) return;
+
+  closeActionMenus(id);
+  const position = clampActionMenuPosition(clientX, clientY);
+  state.actionMenuPosition = position;
+  const hasContent = Boolean(normalizeText(state.content));
+  ensureRoot().querySelector(`[data-ask-chat-menu-id="${id}"]`)?.remove();
+  ensureRoot().insertAdjacentHTML('beforeend', `
+    <div class="ask-chat-action-menu" data-ask-chat-menu-id="${id}" style="left:${position.left}px;top:${position.top}px">
+      <button type="button" data-action="copy"${hasContent ? '' : ' disabled'}>复制</button>
+      <button type="button" data-action="regenerate">重新生成</button>
+    </div>
+  `);
+
+  const menu = ensureRoot().querySelector(`[data-ask-chat-menu-id="${id}"]`);
+  menu.querySelector('[data-action="copy"]')?.addEventListener('click', async () => {
+    if (!normalizeText(state.content)) return;
+    try {
+      await navigator.clipboard.writeText(state.content);
+    } catch {
+      // Clipboard may be unavailable on restricted pages.
+    }
+    closeActionMenus();
+  });
+  menu.querySelector('[data-action="regenerate"]')?.addEventListener('click', () => {
+    closeActionMenus();
+    startLookup(id, state.intent || 'explain');
+  });
+}
+
 function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) {
   const state = popovers.get(id);
   if (!state) return;
@@ -443,6 +680,10 @@ function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) 
   panel.querySelector('.ask-chat-header button[aria-label="Close"]')?.addEventListener('click', () => closePopover(id));
   panel.querySelector('.ask-chat-body')?.addEventListener('mouseup', () => handlePanelSelection(id));
   panel.querySelector('.ask-chat-body')?.addEventListener('keyup', () => handlePanelSelection(id));
+  panel.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    renderActionMenu(id, event.clientX, event.clientY);
+  });
   attachPanelDrag(id);
 }
 
@@ -522,6 +763,9 @@ async function startLookup(id, intent = 'explain') {
 
   const requestId = crypto.randomUUID();
   const trigger = ensureRoot().querySelector(`[data-ask-chat-id="${id}"]`);
+  stopWaitingRotation(state);
+  cancelActiveRequest(state);
+  closeActionMenus();
   state.requestId = requestId;
   state.content = '';
   state.intent = intent;
@@ -577,11 +821,12 @@ function handlePageSelection() {
     if (!text) return;
 
     const range = selection.getRangeAt(0);
+    const context = buildSelectionContext(selection);
     renderButton({
       rect: getSelectionRect(range),
-      pageTitle: document.title,
-      pageUrl: location.href,
-      surroundingText: getSurroundingText(selection),
+      pageTitle: context.page.title || document.title,
+      pageUrl: context.page.url || location.href,
+      surroundingText: context.formattedText,
       text
     });
   }, 0);
@@ -656,7 +901,8 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('pointerdown', (event) => {
   const clickedAskChat = event.target.closest?.('[data-ask-chat-id]');
   const clickedAskChatId = clickedAskChat?.dataset?.askChatId || '';
-  const clickedInsideAskChat = Boolean(clickedAskChat);
+  const clickedActionMenu = event.target.closest?.('[data-ask-chat-menu-id]');
+  const clickedInsideAskChat = Boolean(clickedAskChat) || Boolean(clickedActionMenu);
   let closedPopover = false;
 
   if (closeButtonPopovers(clickedAskChatId)) {
@@ -664,6 +910,9 @@ document.addEventListener('pointerdown', (event) => {
   }
 
   if (clickedInsideAskChat) {
+    if (!clickedActionMenu) {
+      closeActionMenus();
+    }
     if (closedPopover) {
       suppressNextSelection = true;
       window.getSelection()?.removeAllRanges();
@@ -677,6 +926,7 @@ document.addEventListener('pointerdown', (event) => {
       closedPopover = true;
     }
   }
+  closeActionMenus();
   if (closedPopover) {
     suppressNextSelection = true;
     window.getSelection()?.removeAllRanges();
