@@ -2,6 +2,18 @@ const ASK_CHAT_ROOT_ID = 'ask-chat-selection-root';
 const MAX_CONTEXT_CHARS = 5000;
 const MAX_LOCAL_CONTEXT_CHARS = 1800;
 const MAX_PAGE_CONTEXT_CHARS = 2600;
+const THINKING_STATUS_INTERVAL_MS = 4400;
+const THINKING_STATUS_MESSAGES = [
+  '思考中',
+  '少女祈祷中',
+  '正在烧高香，祈求 GPU 不过热',
+  'AI 正在抽卡',
+  '正在与服务器搏斗',
+  '正在翻越防火长城',
+  '向量空间迷路中',
+  'Token 正在排队',
+  '正在打开次元裂缝'
+];
 
 let root = null;
 let nextPopoverId = 1;
@@ -50,6 +62,17 @@ function clampPosition(rect, mode) {
 
 function normalizeText(text) {
   return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function getRandomThinkingStatusIndex(excludedIndex = -1) {
+  if (THINKING_STATUS_MESSAGES.length <= 1) return 0;
+
+  let nextIndex = excludedIndex;
+  while (nextIndex === excludedIndex) {
+    nextIndex = Math.floor(Math.random() * THINKING_STATUS_MESSAGES.length);
+  }
+
+  return nextIndex;
 }
 
 function getMetaDescription() {
@@ -294,6 +317,8 @@ function createPopover(target) {
     requestId: '',
     content: '',
     intent: target.intent || 'explain',
+    waitingIndex: getRandomThinkingStatusIndex(),
+    waitingTimer: null,
     pinned: false,
     panelPosition: null,
     dragState: null
@@ -307,6 +332,7 @@ function removePopoverElement(id) {
 
 function closePopover(id) {
   const state = popovers.get(id);
+  stopWaitingRotation(state);
   if (state?.requestId) {
     chrome.runtime.sendMessage({
       type: 'ASK_CHAT_CANCEL',
@@ -316,6 +342,30 @@ function closePopover(id) {
   }
   removePopoverElement(id);
   popovers.delete(id);
+}
+
+function stopWaitingRotation(state) {
+  if (!state?.waitingTimer) return;
+  window.clearInterval(state.waitingTimer);
+  state.waitingTimer = null;
+}
+
+function startWaitingRotation(id) {
+  const state = popovers.get(id);
+  if (!state) return;
+
+  stopWaitingRotation(state);
+  state.waitingIndex = getRandomThinkingStatusIndex(state.waitingIndex);
+  state.waitingTimer = window.setInterval(() => {
+    const current = popovers.get(id);
+    if (!current || current.content) {
+      stopWaitingRotation(current);
+      return;
+    }
+    current.waitingIndex = getRandomThinkingStatusIndex(current.waitingIndex);
+    const waitingText = ensureRoot().querySelector(`[data-ask-chat-id="${id}"] .ask-chat-waiting-text`);
+    if (waitingText) waitingText.textContent = THINKING_STATUS_MESSAGES[current.waitingIndex];
+  }, THINKING_STATUS_INTERVAL_MS);
 }
 
 function renderButton(target) {
@@ -365,7 +415,7 @@ function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) 
     ? renderMarkdown(state.content)
     : status === 'error'
       ? `<span class="ask-chat-error">${escapeHtml(error)}</span>`
-      : `<span class="ask-chat-muted">等待模型返回${state.intent === 'translate' ? '翻译' : '解释'}</span>`;
+      : `<span class="ask-chat-muted ask-chat-waiting"><span class="ask-chat-waiting-spinner" aria-hidden="true"></span><span class="ask-chat-waiting-text">${escapeHtml(THINKING_STATUS_MESSAGES[state.waitingIndex])}</span></span>`;
 
   const headerInner = state.userPrompt
     ? `<div class="ask-chat-header-text"><span title="${escapeHtml(state.target.text)}">「${escapeHtml(state.target.text)}」</span><span class="ask-chat-user-prompt" title="${escapeHtml(state.userPrompt)}">${escapeHtml(state.userPrompt)}</span></div>`
@@ -477,6 +527,7 @@ async function startLookup(id, intent = 'explain') {
   state.intent = intent;
   state.userPrompt = intent === 'translate' ? '' : (trigger?.querySelector('input')?.value?.trim() || state.userPrompt || '');
   renderPanel(id, { status: 'loading' });
+  startWaitingRotation(id);
 
   let response;
   try {
@@ -494,6 +545,7 @@ async function startLookup(id, intent = 'explain') {
     });
   } catch {
     if (popovers.has(id) && popovers.get(id).requestId === requestId) {
+      stopWaitingRotation(popovers.get(id));
       renderPanel(id, { status: 'error', error: '扩展已重载，请刷新页面后重试' });
     }
     return;
@@ -501,9 +553,11 @@ async function startLookup(id, intent = 'explain') {
 
   if (!popovers.has(id) || popovers.get(id).requestId !== requestId) return;
   if (!response?.ok) {
+    stopWaitingRotation(state);
     renderPanel(id, { status: 'error', error: response?.error || '解释失败' });
     return;
   }
+  stopWaitingRotation(state);
   state.content = response.data?.content || state.content;
   renderPanel(id, { status: 'done', content: state.content });
 }
@@ -562,6 +616,7 @@ chrome.runtime.onMessage.addListener((message) => {
   const state = Array.from(popovers.values()).find(item => item.requestId === message.requestId);
   if (!state) return;
 
+  stopWaitingRotation(state);
   state.content += message.chunk || '';
   const body = ensureRoot().querySelector(`[data-ask-chat-id="${state.id}"] .ask-chat-body`);
   if (!body) return;

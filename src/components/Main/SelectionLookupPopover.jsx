@@ -52,6 +52,31 @@ const LoadingDots = () => (
   </span>
 );
 
+const THINKING_STATUS_INTERVAL_MS = 4400;
+
+const thinkingStatusMessages = [
+  "思考中",
+  "少女祈祷中",
+  "正在烧高香，祈求 GPU 不过热",
+  "AI 正在抽卡",
+  "正在与服务器搏斗",
+  "正在翻越防火长城",
+  "向量空间迷路中",
+  "Token 正在排队",
+  "正在打开次元裂缝",
+];
+
+const getRandomThinkingStatusIndex = (excludedIndex = -1) => {
+  if (thinkingStatusMessages.length <= 1) return 0;
+
+  let nextIndex = excludedIndex;
+  while (nextIndex === excludedIndex) {
+    nextIndex = Math.floor(Math.random() * thinkingStatusMessages.length);
+  }
+
+  return nextIndex;
+};
+
 const PinIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M14.5 3.5 20.5 9.5 18.4 11.6 16.8 10 13 13.8V18L11.8 19.2 8.2 15.6 4 19.8 3.2 19 7.4 14.8 3.8 11.2 5 10H9.2L13 6.2 11.4 4.6 14.5 3.5Z" />
@@ -76,6 +101,7 @@ const SelectionLookupPopover = ({
   const [userPrompt, setUserPrompt] = useState('');
   const [intent, setIntent] = useState(target.intent || 'explain');
   const [panelPosition, setPanelPosition] = useState(null);
+  const [waitingMessageIndex, setWaitingMessageIndex] = useState(() => getRandomThinkingStatusIndex());
   const lookupRef = useRef(null);
   const popoverRef = useRef(null);
   const bodyRef = useRef(null);
@@ -146,6 +172,16 @@ const SelectionLookupPopover = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (status !== 'loading' || content) return undefined;
+
+    const timer = window.setInterval(() => {
+      setWaitingMessageIndex(current => getRandomThinkingStatusIndex(current));
+    }, THINKING_STATUS_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [content, status]);
+
   const startLookup = (nextIntent = 'explain') => {
     window.getSelection?.()?.removeAllRanges();
     setIntent(nextIntent);
@@ -168,6 +204,7 @@ const SelectionLookupPopover = ({
     setStatus('loading');
     setContent('');
     setError('');
+    setWaitingMessageIndex(current => getRandomThinkingStatusIndex(current));
     setPanelPosition(current => current || clampPosition(target.rect, 'result'));
 
     const lookup = runSelectionLookup({
@@ -336,7 +373,10 @@ const SelectionLookupPopover = ({
         ) : status === 'error' ? (
           <p className="selection-lookup-error">{error}</p>
         ) : (
-          <p className="selection-lookup-placeholder">等待模型返回{intent === 'translate' ? '翻译' : '解释'}</p>
+          <p className="selection-lookup-placeholder selection-lookup-waiting">
+            <span className="selection-lookup-waiting-spinner" aria-hidden="true" />
+            <span className="selection-lookup-waiting-text">{thinkingStatusMessages[waitingMessageIndex]}</span>
+          </p>
         )}
       </div>
       {status === 'error' && content && <p className="selection-lookup-error">{error}</p>}

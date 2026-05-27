@@ -24,6 +24,8 @@ const RegenerateIcon = () => (
   </svg>
 );
 
+const THINKING_STATUS_INTERVAL_MS = 4400;
+
 const thinkingStatusMessages = [
   "思考中",
   "少女祈祷中",
@@ -53,12 +55,12 @@ const RotatingThinkingStatus = () => {
   useEffect(() => {
     const timer = window.setInterval(() => {
       setMessageIndex((current) => getRandomThinkingStatusIndex(current));
-    }, 2200);
+    }, THINKING_STATUS_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
   }, []);
 
-  return <span>{thinkingStatusMessages[messageIndex]}</span>;
+  return <span className="thinking-status-text">{thinkingStatusMessages[messageIndex]}</span>;
 };
 
 const ReasoningPanel = ({ content, hasResponseContent, isGenerating }) => {
