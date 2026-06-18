@@ -329,6 +329,43 @@ function formatSelectionContext(context) {
   return contextParts.join('\n\n').slice(0, MAX_CONTEXT_CHARS);
 }
 
+function buildFallbackSelectionContext(selection, selectedText) {
+  const block = getBlockElement(selection.anchorNode);
+  const currentText = windowAroundSelection(getElementText(block), selectedText, MAX_LOCAL_CONTEXT_CHARS);
+  return {
+    selectedText,
+    page: {
+      title: document.title || '',
+      url: location.href,
+      language: getPageLanguage() || '',
+      description: getMetaDescription()
+    },
+    selection: {
+      blockTag: block?.tagName?.toLowerCase() || 'unknown',
+      structureText: `所在标签：${block?.tagName?.toLowerCase() || 'unknown'}`,
+      tableContext: ''
+    },
+    domPath: getHeadingChain(block),
+    localContext: {
+      previousText: '',
+      currentText,
+      nextText: ''
+    },
+    mainContext: ''
+  };
+}
+
+function buildSafeSelectionContext(selection, selectedText) {
+  try {
+    return buildSelectionContext(selection);
+  } catch (error) {
+    console.warn('[Ask Chat] failed to build structured selection context', error);
+    const context = buildFallbackSelectionContext(selection, selectedText);
+    context.formattedText = formatSelectionContext(context);
+    return context;
+  }
+}
+
 function escapeHtml(text) {
   return String(text || '')
     .replace(/&/g, '&amp;')
@@ -574,6 +611,7 @@ function renderButton(target) {
     event.preventDefault();
     startLookup(id, 'explain');
   });
+  return id;
 }
 
 function closeButtonPopovers(exceptId = '') {
@@ -685,6 +723,34 @@ function renderPanel(id, { status = 'loading', content = '', error = '' } = {}) 
     renderActionMenu(id, event.clientX, event.clientY);
   });
   attachPanelDrag(id);
+}
+
+function getPanelStatusText(state, status) {
+  if (status === 'loading') return state.intent === 'translate' ? '正在翻译' : '正在询问模型';
+  if (status === 'error') return state.intent === 'translate' ? '翻译失败' : '解释失败';
+  return state.intent === 'translate' ? '翻译完成' : 'Ask Chat';
+}
+
+function updatePanelMeta(id, status) {
+  const state = popovers.get(id);
+  const meta = ensureRoot().querySelector(`[data-ask-chat-id="${id}"] .ask-chat-meta`);
+  if (!state || !meta) return;
+  meta.textContent = getPanelStatusText(state, status);
+}
+
+function updatePanelBodyContent(id, content) {
+  const body = ensureRoot().querySelector(`[data-ask-chat-id="${id}"] .ask-chat-body`);
+  if (!body) return;
+
+  const previousScrollTop = body.scrollTop;
+  const wasNearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 24;
+  body.dataset.content = content;
+  body.innerHTML = renderMarkdown(content);
+  if (wasNearBottom) {
+    body.scrollTop = body.scrollHeight;
+  } else {
+    body.scrollTop = previousScrollTop;
+  }
 }
 
 function togglePinned(id) {
@@ -803,7 +869,12 @@ async function startLookup(id, intent = 'explain') {
   }
   stopWaitingRotation(state);
   state.content = response.data?.content || state.content;
-  renderPanel(id, { status: 'done', content: state.content });
+  if (ensureRoot().querySelector(`[data-ask-chat-id="${id}"]`)) {
+    updatePanelMeta(id, 'done');
+    updatePanelBodyContent(id, state.content);
+  } else {
+    renderPanel(id, { status: 'done', content: state.content });
+  }
 }
 
 function handlePageSelection() {
@@ -821,14 +892,26 @@ function handlePageSelection() {
     if (!text) return;
 
     const range = selection.getRangeAt(0);
-    const context = buildSelectionContext(selection);
-    renderButton({
+    const fallbackContext = buildFallbackSelectionContext(selection, text);
+    fallbackContext.formattedText = formatSelectionContext(fallbackContext);
+    const id = renderButton({
       rect: getSelectionRect(range),
-      pageTitle: context.page.title || document.title,
-      pageUrl: context.page.url || location.href,
-      surroundingText: context.formattedText,
+      pageTitle: fallbackContext.page.title || document.title,
+      pageUrl: fallbackContext.page.url || location.href,
+      surroundingText: fallbackContext.formattedText,
       text
     });
+    window.setTimeout(() => {
+      const state = popovers.get(id);
+      if (!state) return;
+      const context = buildSafeSelectionContext(selection, text);
+      state.target = {
+        ...state.target,
+        pageTitle: context.page.title || document.title,
+        pageUrl: context.page.url || location.href,
+        surroundingText: context.formattedText
+      };
+    }, 0);
   }, 0);
 }
 
@@ -863,10 +946,7 @@ chrome.runtime.onMessage.addListener((message) => {
 
   stopWaitingRotation(state);
   state.content += message.chunk || '';
-  const body = ensureRoot().querySelector(`[data-ask-chat-id="${state.id}"] .ask-chat-body`);
-  if (!body) return;
-  body.dataset.content = state.content;
-  body.innerHTML = renderMarkdown(state.content);
+  updatePanelBodyContent(state.id, state.content);
 });
 
 document.addEventListener('mouseup', (event) => {
@@ -903,19 +983,19 @@ document.addEventListener('pointerdown', (event) => {
   const clickedAskChatId = clickedAskChat?.dataset?.askChatId || '';
   const clickedActionMenu = event.target.closest?.('[data-ask-chat-menu-id]');
   const clickedInsideAskChat = Boolean(clickedAskChat) || Boolean(clickedActionMenu);
-  let closedPopover = false;
+  let closedButtonPopover = false;
+  let closedPanelPopover = false;
 
   if (closeButtonPopovers(clickedAskChatId)) {
-    closedPopover = true;
+    closedButtonPopover = true;
   }
 
   if (clickedInsideAskChat) {
     if (!clickedActionMenu) {
       closeActionMenus();
     }
-    if (closedPopover) {
+    if (closedButtonPopover) {
       suppressNextSelection = true;
-      window.getSelection()?.removeAllRanges();
     }
     return;
   }
@@ -923,12 +1003,14 @@ document.addEventListener('pointerdown', (event) => {
   for (const [id, state] of popovers) {
     if (state.mode === 'panel' && !state.pinned) {
       closePopover(id);
-      closedPopover = true;
+      closedPanelPopover = true;
     }
   }
   closeActionMenus();
-  if (closedPopover) {
+  if (closedButtonPopover || closedPanelPopover) {
     suppressNextSelection = true;
+  }
+  if (closedPanelPopover) {
     window.getSelection()?.removeAllRanges();
   }
 }, true);

@@ -31,15 +31,47 @@
         font-weight: 700;
       }
 
-      input {
+      .toggle-row {
         width: min(100%, 300px);
-        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .toggle-row label {
+        margin: 0;
+      }
+
+      .toggle-row input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        padding: 0;
+        accent-color: #1f2937;
+      }
+
+      input,
+      textarea {
+        width: min(100%, 300px);
         margin-top: 6px;
         padding: 0 10px;
         border: 1px solid #dfe3eb;
         border-radius: 8px;
         color: #202124;
         font: inherit;
+      }
+
+      input {
+        height: 36px;
+      }
+
+      textarea {
+        min-height: 72px;
+        padding: 9px 10px;
+        resize: vertical;
+        line-height: 1.4;
       }
 
       button {
@@ -90,6 +122,14 @@
 
     <label for="temperature">Temperature</label>
     <input id="temperature" type="number" min="0" max="2" step="0.1" placeholder="0.2">
+
+    <div class="toggle-row">
+      <label for="enableAnswerFormatInstruction">启用自定义回答要求</label>
+      <input id="enableAnswerFormatInstruction" type="checkbox">
+    </div>
+
+    <label for="answerFormatInstruction">自定义回答要求</label>
+    <textarea id="answerFormatInstruction" placeholder="例如：用三条 bullet 回答；中英双语；先给结论再解释。"></textarea>
 
     <button id="save" type="button">Save</button>
     <p class="hint">支持 OpenAI-compatible Chat Completions。Base URL 填到 /v1 即可，也可以填完整 /chat/completions。</p>
