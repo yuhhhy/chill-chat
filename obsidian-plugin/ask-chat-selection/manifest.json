@@ -1,0 +1,9 @@
+{
+  "id": "ask-chat-selection",
+  "name": "Ask Chat Selection",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Explain or translate selected Obsidian text with an OpenAI-compatible chat model.",
+  "author": "chill-chat",
+  "isDesktopOnly": false
+}
